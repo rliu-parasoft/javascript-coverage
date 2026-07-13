@@ -1,0 +1,18 @@
+subprojects {
+    // Provide standard lifecycle tasks like `clean` (deletes this project's build/ directory).
+    apply plugin: 'base'
+
+    plugins.withId('com.github.node-gradle.node') {
+        node {
+            version = "24.11.1"
+            download = true
+        }
+    }
+
+    // Each integration module should publish one or more explicit distribution artifacts via this configuration.
+    configurations.maybeCreate('integrationDistElements').tap {
+        canBeConsumed = true
+        canBeResolved = false
+        description = 'Outgoing distribution artifacts for root packaging (e.g., .tgz, folder, etc.).'
+    }
+}

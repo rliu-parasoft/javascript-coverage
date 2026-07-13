@@ -1,0 +1,8 @@
+{
+  "name": "@parasoft/parasoft-istanbul-lib-instrument",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TEMPORARY placeholder module; will become a Node project.",
+  "license": "UNLICENSED"
+}

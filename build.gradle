@@ -1,0 +1,96 @@
+plugins {
+    id 'base'
+}
+
+allprojects {
+    group = 'com.parasoft.jscov'
+    version = '1.0.0'
+
+    repositories {
+        mavenCentral()
+    }
+}
+
+// Java-only repositories/config go here to avoid affecting non-Java modules (e.g., integration Node modules).
+subprojects {
+    plugins.withId('java') {
+        repositories {
+            maven {
+                name = 'Parasoft'
+                url = uri('https://build.parasoft.com/maven')
+            }
+        }
+    }
+}
+
+def integrationNodeProjects = subprojects.findAll { it.path.startsWith(':integration:') }
+
+// Resolve and consume each integration module's published dist artifact(s) via configuration,
+// instead of hard-coding task names like `integrationTgz` in the root build.
+def integrationDistByProject = [:]
+integrationNodeProjects.each { p ->
+    def cfgName = "integrationDist_${p.name.replaceAll('[^A-Za-z0-9]', '_')}"
+    def cfg = configurations.create(cfgName) {
+        canBeConsumed = false
+        canBeResolved = true
+        description = "Resolves integration dist artifacts from ${p.path}"
+    }
+
+    dependencies.add(cfgName, dependencies.project(path: p.path, configuration: 'integrationDistElements'))
+    integrationDistByProject[p] = cfg
+}
+
+tasks.register('distribution', Zip) {
+    group = 'distribution'
+    description = 'Builds the distribution zip artifact.'
+
+    archiveFileName = "parasoft_javascript_coverage_${project.version}.zip"
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+
+    // CI/CD friendliness: stable ordering + no timestamps => reproducible zip byte-for-byte.
+    reproducibleFileOrder = true
+    preserveFileTimestamps = false
+
+    dependsOn(project(':javascript-coverage').tasks.named('shadowJar'))
+    // Ensure integration dist artifacts are built before packaging.
+    dependsOn(integrationDistByProject.values().collect { it.buildDependencies })
+
+    doFirst {
+        logger.lifecycle("Packaging integration modules: ${integrationDistByProject.keySet().collect { it.path }.join(', ')}")
+    }
+
+    // docs/
+    from('docs') {
+        into('docs')
+    }
+
+    // licenses/
+    from('licenses') {
+        into('licenses')
+    }
+
+    // integration/<module>/ (module-published dist artifacts)
+    integrationDistByProject.each { p, cfg ->
+        from(cfg) {
+            into("integration/${p.name}")
+        }
+    }
+
+    // EULA.txt + settings.properties at zip root
+    from('dist-resources') {
+        include 'EULA.txt'
+        include 'settings.properties'
+        into('')
+    }
+
+    // jscov.jar at zip root (module runnable jar)
+    from(project(':javascript-coverage').tasks.named('shadowJar')) {
+        into('')
+    }
+}
+
+tasks.register('dist') {
+    group = 'distribution'
+    description = 'Alias for distribution zip build.'
+    dependsOn(tasks.named('distribution'))
+}

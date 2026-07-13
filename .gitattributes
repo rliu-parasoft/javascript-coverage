@@ -1,0 +1,7 @@
+* text=auto
+*.sh text eol=lf
+gradlew text eol=lf
+gradlew.bat text eol=crlf
+*.xml text eol=lf
+*.xsd text eol=lf
+*.txt text eol=lf

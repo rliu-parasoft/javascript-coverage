@@ -1,0 +1,50 @@
+plugins {
+    id 'com.github.node-gradle.node' version '7.0.2'
+}
+
+node {
+    download = true
+}
+
+def stagedIntegrationArtifactDir = layout.buildDirectory.dir('integrationArtifact')
+
+tasks.register('stageIntegrationArtifact', Copy) {
+    group = 'build'
+    description = 'Stages publishable content into build/ for packaging.'
+
+    // `artifact/` is a temporary, hand-authored staging directory for *publishable* content.
+    // Put whatever you want to ship for this Node module under `artifact/` (built files, runtime assets, etc).
+    // When the real Node build exists, replace this with the real build output/staging folder.
+    from('artifact')
+    into(stagedIntegrationArtifactDir)
+}
+
+tasks.register('integrationTgz', Tar) {
+    group = 'build'
+    description = 'Builds the integration distribution artifact (.tgz) for root packaging.'
+
+    archiveBaseName = project.name
+    archiveExtension = 'tgz'
+    compression = Compression.GZIP
+    destinationDirectory = layout.buildDirectory.dir('integrationDist')
+
+    // Keep a stable filename without version for distribution packaging.
+    archiveVersion = ''
+
+    // CI/CD friendliness: stable ordering + no timestamps => reproducible tgz byte-for-byte.
+    reproducibleFileOrder = true
+    preserveFileTimestamps = false
+
+    dependsOn(tasks.named('stageIntegrationArtifact'))
+
+    // TODO
+    // Source for the tgz contents (a directory). Today this is just the placeholder content copied
+    // from projectDir/artifact/; later, point stageIntegrationArtifact at the real Node build output.
+    from(stagedIntegrationArtifactDir)
+}
+
+artifacts {
+    integrationDistElements(tasks.named('integrationTgz')) {
+        builtBy(tasks.named('integrationTgz'))
+    }
+}

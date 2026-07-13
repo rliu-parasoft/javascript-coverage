@@ -1,0 +1,6 @@
+rootProject.name = 'javascript-coverage'
+
+include 'javascript-coverage'
+include 'integration'
+include 'integration:parasoft-istanbul-lib-instrument'
+

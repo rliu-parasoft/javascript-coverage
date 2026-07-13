@@ -1,0 +1,63 @@
+### Gradle ###
+.gradle/
+.gradle-user-home/
+build/
+.tmp-gradle/
+
+### Node ###
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnp.*
+.yarn/
+.npm/
+.pnpm-store/
+
+### IntelliJ IDEA ###
+out/
+/.idea/
+
+### Eclipse ###
+bin/
+.settings/
+.project
+.classpath
+
+### Lombok
+lombok.config
+
+### Project Specific ###
+/tmp/
+~*.xlsx
+~*.docx
+~*.tmp
+*.hprof
+
+### Log ###
+/simulator-logs/
+
+### License ###
+/settings.properties
+/storage/
+
+### ECU Configuration
+/manager/
+
+### someip-simulator
+/ecu.pid
+/ecu.port
+
+/.env.local
+
+/.superpowers/
+
+# IDE
+/.vscode
+/.agents
+/.agent
+/.windsurf
+/.claude
+/.worktrees

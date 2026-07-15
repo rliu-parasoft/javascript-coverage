@@ -1,9 +1,22 @@
 /* globals describe, it */
 const { assert } = require('chai');
-const index = require('../src/index');
+
+function loadIndex() {
+    delete require.cache[require.resolve('../src/index')];
+    return require('../src/index');
+}
+
+function loadIndexFromCache() {
+    return require('../src/index');
+}
+
+const loadNoticeKey = Symbol.for(
+    'parasoft.istanbul-lib-instrument.loadNoticeShown'
+);
 
 describe('external interface', () => {
     it('exposes the correct objects', () => {
+        const index = loadIndex();
         const i = index.createInstrumenter();
         assert.ok(i);
         assert.ok(i.instrumentSync);
@@ -19,6 +32,7 @@ describe('instrumenter', () => {
         // This test has frequent timeout on Windows.
         this.timeout(5000);
 
+        const index = loadIndex();
         const instrumenter = index.createInstrumenter({
             preserveComments: false
         });
@@ -36,5 +50,32 @@ describe('instrumenter', () => {
             -1,
             'line comment not removed'
         );
+    });
+
+    it('logs a load notice once when the module is required', () => {
+        const originalWarn = console.warn;
+        const originalNoticeState = global[loadNoticeKey];
+        const notices = [];
+        console.warn = message => {
+            notices.push(message);
+        };
+
+        try {
+            global[loadNoticeKey] = false;
+            const index = loadIndex();
+            assert.ok(index);
+            loadIndexFromCache();
+        } finally {
+            console.warn = originalWarn;
+            if (originalNoticeState === undefined) {
+                delete global[loadNoticeKey];
+            } else {
+                global[loadNoticeKey] = originalNoticeState;
+            }
+        }
+
+        assert.deepEqual(notices, [
+            '[parasoft-istanbul-lib-instrument] loaded version 6.0.3-1; this Parasoft fork is active.'
+        ]);
     });
 });

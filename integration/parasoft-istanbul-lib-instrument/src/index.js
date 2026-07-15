@@ -1,7 +1,25 @@
 const { defaults } = require('@istanbuljs/schema');
+const { name, version } = require('../package.json');
 const Instrumenter = require('./instrumenter');
 const programVisitor = require('./visitor');
 const readInitialCoverage = require('./read-coverage');
+
+const loadNoticeKey = Symbol.for(
+    'parasoft.istanbul-lib-instrument.loadNoticeShown'
+);
+
+function logLoadNotice() {
+    if (global[loadNoticeKey]) {
+        return;
+    }
+
+    global[loadNoticeKey] = true;
+    console.warn(
+        `[${name}] loaded version ${version}; this Parasoft fork is active.`
+    );
+}
+
+logLoadNotice();
 
 /**
  * createInstrumenter creates a new instrumenter with the

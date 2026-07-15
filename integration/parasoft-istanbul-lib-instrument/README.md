@@ -1,11 +1,10 @@
-## istanbul-lib-instrument
+## parasoft-istanbul-lib-instrument
 
-[![Build Status](https://travis-ci.org/istanbuljs/istanbul-lib-instrument.svg?branch=main)](https://travis-ci.org/istanbuljs/istanbul-lib-instrument)
+Parasoft fork of `istanbul-lib-instrument`.
 
-Istanbul instrumenter library.
-
-Version 1.1.x now implements instrumentation using `Babel`. The implementation is inspired
-by prior art by @dtinth as demonstrated in the `__coverage__` babel plugin.
+This package provides the JavaScript instrumentation logic used by the integration module in
+this repository. It is packaged as an npm tarball with the Parasoft package name and version, so
+consumers can install it directly or reference it via npm overrides.
 
 It provides 2 "modes" of instrumentation.
 
@@ -17,6 +16,5 @@ It provides 2 "modes" of instrumentation.
     processing. This is the preferred path for babel users. The Babel plugin is
     called `babel-plugin-istanbul`.
 
-Incompatibilities and changes to instrumentation behavior can be found in
-[v0-changes.md](v0-changes.md).
-
+Behavior and implementation details are inherited from the upstream library unless otherwise
+documented in this repository.

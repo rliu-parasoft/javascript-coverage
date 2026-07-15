@@ -1,50 +1,39 @@
+import com.github.gradle.node.npm.task.NpmTask
+import groovy.json.JsonSlurper
+
 plugins {
     id 'com.github.node-gradle.node' version '7.0.2'
 }
 
-node {
-    download = true
+def packageJson = new JsonSlurper().parse(file('package.json'))
+def integrationDistDir = layout.buildDirectory.dir('integrationDist')
+def integrationTgzFile = integrationDistDir.map {
+    it.file("${packageJson.name}-${packageJson.version}.tgz")
 }
 
-def stagedIntegrationArtifactDir = layout.buildDirectory.dir('integrationArtifact')
-
-tasks.register('stageIntegrationArtifact', Copy) {
-    group = 'build'
-    description = 'Stages publishable content into build/ for packaging.'
-
-    // `artifact/` is a temporary, hand-authored staging directory for *publishable* content.
-    // Put whatever you want to ship for this Node module under `artifact/` (built files, runtime assets, etc).
-    // When the real Node build exists, replace this with the real build output/staging folder.
-    from('artifact')
-    into(stagedIntegrationArtifactDir)
-}
-
-tasks.register('integrationTgz', Tar) {
+tasks.register('integrationTgz', NpmTask) {
     group = 'build'
     description = 'Builds the integration distribution artifact (.tgz) for root packaging.'
 
-    archiveBaseName = project.name
-    archiveExtension = 'tgz'
-    compression = Compression.GZIP
-    destinationDirectory = layout.buildDirectory.dir('integrationDist')
+    dependsOn(tasks.named('nodeSetup'))
+    workingDir.set(projectDir)
+    doFirst {
+        integrationDistDir.get().asFile.mkdirs()
+    }
+    args = ['pack', '--pack-destination', integrationDistDir.get().asFile.absolutePath]
+}
 
-    // Keep a stable filename without version for distribution packaging.
-    archiveVersion = ''
+tasks.register('test', NpmTask) {
+    group = 'verification'
+    description = 'Runs the module npm test suite.'
 
-    // CI/CD friendliness: stable ordering + no timestamps => reproducible tgz byte-for-byte.
-    reproducibleFileOrder = true
-    preserveFileTimestamps = false
-
-    dependsOn(tasks.named('stageIntegrationArtifact'))
-
-    // TODO
-    // Source for the tgz contents (a directory). Today this is just the placeholder content copied
-    // from projectDir/artifact/; later, point stageIntegrationArtifact at the real Node build output.
-    from(stagedIntegrationArtifactDir)
+    dependsOn(tasks.named('npmInstall'))
+    workingDir.set(projectDir)
+    args = ['test']
 }
 
 artifacts {
-    integrationDistElements(tasks.named('integrationTgz')) {
+    integrationDistElements(integrationTgzFile) {
         builtBy(tasks.named('integrationTgz'))
     }
 }

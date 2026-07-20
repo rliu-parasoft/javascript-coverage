@@ -11,6 +11,11 @@ allprojects {
     }
 }
 
+def rootTest = tasks.register('test') {
+    group = 'verification'
+    description = 'Runs all project tests.'
+}
+
 // Java-only repositories/config go here to avoid affecting non-Java modules (e.g., integration Node modules).
 subprojects {
     plugins.withId('java') {
@@ -20,6 +25,17 @@ subprojects {
                 url = uri('https://build.parasoft.com/maven')
             }
         }
+    }
+
+}
+
+gradle.projectsEvaluated {
+    def testDeps = subprojects.collectMany { p ->
+        [p.tasks.findByName('test')]
+    }.findAll { it != null }
+
+    rootTest.configure {
+        dependsOn(testDeps)
     }
 }
 

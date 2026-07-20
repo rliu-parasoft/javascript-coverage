@@ -2,7 +2,7 @@
 
 Gradle multi-module project that builds a single distribution zip containing:
 - Java CLI jar: `jscov.jar` (built via ShadowJar)
-- Integration (Node) module artifacts under `integration/<module>/` (currently mocked as `.tgz`)
+- Integration (Node) module artifacts under `integration/<module>/`
 - Placeholder `docs/` and `licenses/` directories
 - `EULA.txt` and `settings.properties` at the zip root
 
@@ -16,6 +16,11 @@ Prerequisites:
 Build the distribution artifact:
 ```powershell
 .\gradlew.bat clean dist
+```
+
+Run the full test suite:
+```powershell
+.\gradlew.bat test
 ```
 
 Output:
@@ -33,14 +38,11 @@ Note:
 - `:integration`
   - Aggregator for "integration" modules (expected to be Node projects in the future).
   - Does not auto-discover modules; add them explicitly in `settings.gradle`.
+  - Node-enabled integration modules contribute a `test` task that is included in the root `test` lifecycle.
 
 - `:integration:parasoft-istanbul-lib-instrument`
-  - Empty/placeholder Node module.
-  - Produces `parasoft-istanbul-lib-instrument.tgz` from the temporary `artifact/` staging directory.
-  - Placeholder files (temporary by design):
-    - `integration/parasoft-istanbul-lib-instrument/package.json`
-    - `integration/parasoft-istanbul-lib-instrument/README.md`
-    - `integration/parasoft-istanbul-lib-instrument/artifact/**`
+  - Fork of `istanbul-lib-instrument` 6.0.3-1 packaged under the `parasoft-istanbul-lib-instrument-6.0.3-1.tgz` artifact name.
+  - Produces an npm-compatible tarball with a top-level `package/` directory and the Parasoft package name/version inside `package.json`, while still supporting npm `overrides`.
 
 ## Distribution Contents
 
@@ -50,7 +52,7 @@ docs/
 licenses/
 integration/
   parasoft-istanbul-lib-instrument/
-    parasoft-istanbul-lib-instrument.tgz
+    parasoft-istanbul-lib-instrument-6.0.3-1.tgz
 EULA.txt
 jscov.jar
 settings.properties

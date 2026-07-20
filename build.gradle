@@ -24,7 +24,22 @@ subprojects {
                 name = 'Parasoft'
                 url = uri('https://build.parasoft.com/maven')
             }
+
+            maven {
+                name = 'parasoft-pl-release'
+                url = uri('http://dragon.parasoft.com:8081/nexus/content/repositories/parasoft-pl-releases/')
+                allowInsecureProtocol true
+            }
+
+            maven {
+                name = 'nexus-pl-thirdparty'
+                url = uri('http://dragon.parasoft.com:8081/nexus/content/repositories/nexus-pl-thirdparty/')
+                allowInsecureProtocol true
+            }
         }
+
+        ext.junitBomVersion = '5.10.2'
+        ext.parasoftXtestCoverageAllVersion = '10.7.4.20260717'
     }
 
 }

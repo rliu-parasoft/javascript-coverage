@@ -48,6 +48,9 @@ tasks.named('assemble') {
 }
 
 dependencies {
-    testImplementation platform('org.junit:junit-bom:5.10.2')
+    implementation "com.parasoft.xtest.common:com.parasoft.xtest.coverage.all:${parasoftXtestCoverageAllVersion}"
+
+    testImplementation platform("org.junit:junit-bom:${junitBomVersion}")
     testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

@@ -42,6 +42,7 @@ lombok.config
 ### License ###
 /settings.properties
 /storage/
+/.coverage
 
 ### ECU Configuration
 /manager/

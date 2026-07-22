@@ -1,8 +1,8 @@
 {
   "name": "parasoft-istanbul-lib-instrument",
   "version": "6.0.3-1",
-  "description": "Fork of istanbul-lib-instrument packaged for Parasoft overrides.",
-  "author": "Krishnan Anantheswaran <kananthmail-github@yahoo.com>",
+  "description": "Parasoft JavaScript instrumentation library.",
+  "author": "parasoft",
   "main": "src/index.js",
   "files": [
     "src"

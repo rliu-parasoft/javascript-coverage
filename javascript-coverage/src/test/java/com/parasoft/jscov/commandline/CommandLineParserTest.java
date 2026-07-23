@@ -3,18 +3,40 @@ package com.parasoft.jscov.commandline;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import com.parasoft.jscov.JavascriptCoverage;
 import com.parasoft.jscov.i18n.CommonMessages;
+import com.parasoft.xtest.common.api.MessageSeverity;
+import com.parasoft.xtest.common.api.console.IConsole;
 import com.parasoft.xtest.common.nls.NLS;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 public class CommandLineParserTest {
+
+    private IConsole mockConsole;
+    private IConsole originalConsole;
+
+    @BeforeEach
+    void setUp() {
+        originalConsole = JavascriptCoverage.jscConsole;
+        mockConsole = mock(IConsole.class);
+        JavascriptCoverage.jscConsole = mockConsole;
+    }
+
+    @AfterEach
+    void tearDown() {
+        JavascriptCoverage.jscConsole = originalConsole;
+    }
 
     private Path createWorkingDir(Path directory) throws IOException {
         return Files.createDirectories(directory.resolve("workingDir"));
@@ -60,6 +82,8 @@ public class CommandLineParserTest {
                 "-report", workingDir.resolve("reports").toAbsolutePath().toString()
         }, input.toArguments());
 
+        verify(mockConsole).writeln(NLS.bind(CommonMessages.UNSPECIFIED_PARAMETER, "-settings", settingFile.toAbsolutePath()), MessageSeverity.NORMAL);
+        verify(mockConsole).writeln(NLS.bind(CommonMessages.UNSPECIFIED_PARAMETER, "-report", workingDir.resolve("reports").toAbsolutePath().toString()), MessageSeverity.NORMAL);
     }
 
     @Test
@@ -119,6 +143,7 @@ public class CommandLineParserTest {
 
         assertEquals(NLS.bind(CommonMessages.PROPERTIES_FILE_NOT_FOUND, expectedDefaultSettingsFile),
                 exception.getMessage());
+        verify(mockConsole).writeln(exception.getMessage(), MessageSeverity.HIGH);
     }
 
     @Test
@@ -131,6 +156,7 @@ public class CommandLineParserTest {
 
         assertEquals(NLS.bind(CommonMessages.STATIC_COVERAGE_JSON_FILE_NOT_FOUND,
                 workingDir.resolve("staticNotExisting").toAbsolutePath()), exception.getMessage());
+        verify(mockConsole).writeln(exception.getMessage(), MessageSeverity.HIGH);
     }
 
     @Test
@@ -147,6 +173,7 @@ public class CommandLineParserTest {
 
         assertEquals(NLS.bind(CommonMessages.PROPERTIES_FILE_NOT_FOUND,
                 workingDir.resolve("settingsNotExisting").toAbsolutePath()), exception.getMessage());
+        verify(mockConsole).writeln(exception.getMessage(), MessageSeverity.HIGH);
     }
 
     @Test
@@ -161,6 +188,7 @@ public class CommandLineParserTest {
                 }, workingDir, jscAppDir));
 
         assertEquals(NLS.bind(CommonMessages.UNEXPECTED_VALUE_FOR_PARAMETER, "-settings"), exception.getMessage());
+        verify(mockConsole).writeln(exception.getMessage(), MessageSeverity.HIGH);
     }
 
     @Test
@@ -176,6 +204,7 @@ public class CommandLineParserTest {
                 }, workingDir, jscAppDir));
 
         assertEquals(NLS.bind(CommonMessages.UNEXPECTED_VALUE_FOR_PARAMETER, "-report"), exception.getMessage());
+        verify(mockConsole).writeln(exception.getMessage(), MessageSeverity.HIGH);
     }
 
     @Test
@@ -187,6 +216,7 @@ public class CommandLineParserTest {
                 () -> CommandLineParser.parse(new String[]{"coverage"}, workingDir, jscAppDir));
 
         assertEquals(NLS.bind(CommonMessages.MISSING_REQUIRED_PARAMETER, "-static"), exception.getMessage());
+        verify(mockConsole).writeln(exception.getMessage(), MessageSeverity.HIGH);
     }
 
     @Test
@@ -198,6 +228,7 @@ public class CommandLineParserTest {
                 () -> CommandLineParser.parse(new String[]{"coverage", "-static"}, workingDir, jscAppDir));
 
         assertEquals(NLS.bind(CommonMessages.UNEXPECTED_VALUE_FOR_PARAMETER, "-static"), exception.getMessage());
+        verify(mockConsole).writeln(exception.getMessage(), MessageSeverity.HIGH);
     }
 
     @Test
@@ -213,6 +244,7 @@ public class CommandLineParserTest {
                         jscAppDir));
 
         assertEquals(NLS.bind(CommonMessages.UNEXPECTED_VALUE_FOR_PARAMETER, "-static"), exception.getMessage());
+        verify(mockConsole).writeln(exception.getMessage(), MessageSeverity.HIGH);
     }
 
     @Test
@@ -223,6 +255,7 @@ public class CommandLineParserTest {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                 () -> CommandLineParser.parse(new String[]{"coverage1"}, workingDir, jscAppDir));
         assertEquals(NLS.bind(CommonMessages.UNSUPPORTED_COMMAND, "coverage1"), exception.getMessage());
+        verify(mockConsole).writeln(exception.getMessage(), MessageSeverity.HIGH);
     }
 
     @Test
@@ -240,5 +273,6 @@ public class CommandLineParserTest {
                 "-unknown1",
                 "-unknown2: value2"));
         assertEquals(NLS.bind(CommonMessages.UNKNOWN_PARAMETERS, unknownParameters), exception.getMessage());
+        verify(mockConsole).writeln(exception.getMessage(), MessageSeverity.HIGH);
     }
 }

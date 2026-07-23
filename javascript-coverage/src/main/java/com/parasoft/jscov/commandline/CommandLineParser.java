@@ -1,19 +1,17 @@
 package com.parasoft.jscov.commandline;
 
+import com.parasoft.jscov.JavascriptCoverage;
 import com.parasoft.jscov.i18n.CommonMessages;
-import com.parasoft.jscov.logging.JavascriptCoverageLogger;
+import com.parasoft.xtest.common.api.MessageSeverity;
 import com.parasoft.xtest.common.nls.NLS;
-import com.parasoft.xtest.logging.api.ParasoftLogger;
 
 import java.nio.file.Path;
 import java.util.*;
 
 public final class CommandLineParser {
-    static final String STATIC_ARGUMENT = "-static";
-    static final String SETTINGS_ARGUMENT = "-settings";
-    static final String REPORT_ARGUMENT = "-report";
-
-    private static final ParasoftLogger logger = JavascriptCoverageLogger.getLogger();
+    public static final String STATIC_ARGUMENT = "-static";
+    public static final String SETTINGS_ARGUMENT = "-settings";
+    public static final String REPORT_ARGUMENT = "-report";
 
     public static CommandLineInput parse(String[] args, Path workingDir, Path jscAppDir) {
         CommandLineInput.Command command = CommandLineInput.Command.COVERAGE;
@@ -32,7 +30,9 @@ public final class CommandLineParser {
             throw new UnsupportedOperationException("Need to implement");
         }
 
-        throw new UnsupportedOperationException(NLS.bind(CommonMessages.UNSUPPORTED_COMMAND, command));
+        String message = NLS.bind(CommonMessages.UNSUPPORTED_COMMAND, command);
+        JavascriptCoverage.jscConsole.writeln(message, MessageSeverity.HIGH);
+        throw new UnsupportedOperationException(message);
     }
 
     private static CommandLineInput parseForCoverageCommand(Map<String, List<String>> arguments, Path workingDir, Path jscAppDir) {
@@ -49,7 +49,10 @@ public final class CommandLineParser {
         if (CommandLineInput.Command.IMPACTED.value().equals(value)) {
             return CommandLineInput.Command.IMPACTED;
         }
-        throw new IllegalArgumentException(NLS.bind(CommonMessages.UNSUPPORTED_COMMAND, value));
+
+        String message = NLS.bind(CommonMessages.UNSUPPORTED_COMMAND, value);
+        JavascriptCoverage.jscConsole.writeln(message, MessageSeverity.HIGH);
+        throw new IllegalArgumentException(message);
     }
 
     private static Map<String, List<String>> collectArguments(String[] args) {
@@ -88,10 +91,10 @@ public final class CommandLineParser {
         return arguments;
     }
 
-    private static void normalizeOptionalArgument( Map<String, List<String>> arguments, String argumentName, Path defaultPath) {
+    private static void normalizeOptionalArgument(Map<String, List<String>> arguments, String argumentName, Path defaultPath) {
         List<String> value = arguments.get(argumentName);
         if (value == null || value.isEmpty()) {
-            logger.info(NLS.bind(CommonMessages.UNSPECIFIED_PARAMETER, argumentName, defaultPath.toAbsolutePath()));
+            JavascriptCoverage.jscConsole.writeln(NLS.bind(CommonMessages.UNSPECIFIED_PARAMETER, argumentName, defaultPath.toAbsolutePath()), MessageSeverity.NORMAL);
             List<String> values = new ArrayList<>();
             values.add(defaultPath.toString());
             arguments.put(argumentName, values);

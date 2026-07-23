@@ -1,6 +1,8 @@
 package com.parasoft.jscov.commandline;
 
+import com.parasoft.jscov.JavascriptCoverage;
 import com.parasoft.jscov.i18n.CommonMessages;
+import com.parasoft.xtest.common.api.MessageSeverity;
 import com.parasoft.xtest.common.nls.NLS;
 
 import java.nio.file.Files;
@@ -46,7 +48,9 @@ class CommandLineValidator {
             }
         }
         if(!unknownParameters.isEmpty()) {
-            throw new IllegalArgumentException(NLS.bind(CommonMessages.UNKNOWN_PARAMETERS, String.join("\n ", unknownParameters)));
+            String message = NLS.bind(CommonMessages.UNKNOWN_PARAMETERS, String.join("\n ", unknownParameters));
+            JavascriptCoverage.jscConsole.writeln(message, MessageSeverity.HIGH);
+            throw new IllegalArgumentException(message);
         }
     }
 
@@ -55,7 +59,9 @@ class CommandLineValidator {
 
         Path staticCoverageJsonFile = resolveAgainstWorkingDir(args.get(CommandLineParser.STATIC_ARGUMENT).get(0), workingDir);
         if (!Files.isRegularFile(staticCoverageJsonFile)) {
-            throw new IllegalArgumentException(NLS.bind(CommonMessages.STATIC_COVERAGE_JSON_FILE_NOT_FOUND, staticCoverageJsonFile));
+            String message = NLS.bind(CommonMessages.STATIC_COVERAGE_JSON_FILE_NOT_FOUND, staticCoverageJsonFile);
+            JavascriptCoverage.jscConsole.writeln(message, MessageSeverity.HIGH);
+            throw new IllegalArgumentException(message);
         }
 
         args.get(CommandLineParser.STATIC_ARGUMENT).set(0, staticCoverageJsonFile.toAbsolutePath().toString());
@@ -66,7 +72,9 @@ class CommandLineValidator {
 
         Path settingsFile = resolveAgainstWorkingDir(args.get(CommandLineParser.SETTINGS_ARGUMENT).get(0), workingDir);
         if (!Files.isRegularFile(settingsFile)) {
-            throw new IllegalArgumentException(NLS.bind(CommonMessages.PROPERTIES_FILE_NOT_FOUND, settingsFile));
+            String message = NLS.bind(CommonMessages.PROPERTIES_FILE_NOT_FOUND, settingsFile);
+            JavascriptCoverage.jscConsole.writeln(message, MessageSeverity.HIGH);
+            throw new IllegalArgumentException(message);
         }
         args.get(CommandLineParser.SETTINGS_ARGUMENT).set(0, settingsFile.toAbsolutePath().toString());
     }
@@ -82,22 +90,30 @@ class CommandLineValidator {
 
         List<String> values = args.get(key);
         if (values.size() > 1 || values.get(0) == null) {
-            throw new IllegalArgumentException(NLS.bind(CommonMessages.UNEXPECTED_VALUE_FOR_PARAMETER, key));
+            String message = NLS.bind(CommonMessages.UNEXPECTED_VALUE_FOR_PARAMETER, key);
+            JavascriptCoverage.jscConsole.writeln(message, MessageSeverity.HIGH);
+            throw new IllegalArgumentException(message);
         }
     }
 
     private static void requireNotNoneArgument(Map<String, List<String>> args, String key) {
         if (args == null || args.isEmpty()) {
-            throw new IllegalArgumentException(NLS.bind(CommonMessages.MISSING_REQUIRED_PARAMETER, key));
+            String message = NLS.bind(CommonMessages.MISSING_REQUIRED_PARAMETER, key);
+            JavascriptCoverage.jscConsole.writeln(message, MessageSeverity.HIGH);
+            throw new IllegalArgumentException(message);
         }
 
         if (!args.containsKey(key)) {
-            throw new IllegalArgumentException(NLS.bind(CommonMessages.MISSING_REQUIRED_PARAMETER, key));
+            String message = NLS.bind(CommonMessages.MISSING_REQUIRED_PARAMETER, key);
+            JavascriptCoverage.jscConsole.writeln(message, MessageSeverity.HIGH);
+            throw new IllegalArgumentException(message);
         }
 
         List<String> values = args.get(key);
         if (values == null || values.isEmpty()) {
-            throw new IllegalArgumentException(NLS.bind(CommonMessages.MISSING_VALUE_FOR_PARAMETER, key));
+            String message = NLS.bind(CommonMessages.MISSING_VALUE_FOR_PARAMETER, key);
+            JavascriptCoverage.jscConsole.writeln(message, MessageSeverity.HIGH);
+            throw new IllegalArgumentException(message);
         }
     }
 

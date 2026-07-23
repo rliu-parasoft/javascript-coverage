@@ -40,6 +40,8 @@ subprojects {
 
         ext.junitBomVersion = '5.10.2'
         ext.parasoftXtestCoverageAllVersion = '10.7.4.20260717'
+        ext.log4jVersion = '2.25.4'
+        ext.mockitoVersion = '5.14.2'
     }
 
 }

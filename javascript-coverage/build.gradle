@@ -23,6 +23,10 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
+    inputs.files(configurations.mockitoAgent)
+    doFirst {
+        jvmArgs "-javaagent:${configurations.mockitoAgent.asPath}"
+    }
 }
 
 jar {
@@ -47,10 +51,18 @@ tasks.named('assemble') {
     dependsOn(tasks.named('shadowJar'))
 }
 
+configurations {
+    mockitoAgent
+}
+
 dependencies {
     implementation "com.parasoft.xtest.common:com.parasoft.xtest.coverage.all:${parasoftXtestCoverageAllVersion}"
+    implementation "org.apache.logging.log4j:log4j-core:${log4jVersion}"
 
     testImplementation platform("org.junit:junit-bom:${junitBomVersion}")
     testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation "org.mockito:mockito-core:${mockitoVersion}"
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    mockitoAgent("org.mockito:mockito-core:${mockitoVersion}") { transitive = false }
 }

@@ -1,5 +1,8 @@
 package com.parasoft.jscov;
 
+import com.parasoft.jscov.coverage.ApplicationCoverageData;
+import com.parasoft.jscov.coverage.FileCoverage;
+import com.parasoft.jscov.coverage.StaticCoverageParser;
 import com.parasoft.xtest.common.api.console.IConsole;
 import com.parasoft.xtest.common.api.progress.IProgressMonitor;
 import com.parasoft.xtest.common.api.telemetry.ITelemetryConfiguration;
@@ -30,7 +33,7 @@ public class JavascriptCoverageDataEngine implements ICoverageDataEngine
     @Override
     public Iterator<ServiceDeclaration> getDeclaredServices()
     {
-        return null;
+        return Collections.emptyIterator();
     }
 
     @Override
@@ -54,7 +57,9 @@ public class JavascriptCoverageDataEngine implements ICoverageDataEngine
     @Override
     public IApplicationCoverageData scanApplication(Path appToScan, ICoverageContext context, IProgressMonitor monitor)
     {
-        return null;
+        List<FileCoverage> staticInputs = StaticCoverageParser.parse(appToScan, context, monitor);
+
+        return new ApplicationCoverageData(staticInputs);
     }
 
     @Override

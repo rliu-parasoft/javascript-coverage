@@ -1,6 +1,7 @@
 package com.parasoft.jscov;
 
 import com.parasoft.jscov.commandline.CommandLineParser;
+import com.parasoft.jscov.commandline.CommandLineInput;
 import com.parasoft.jscov.logging.JavascriptCoverageLogger;
 import com.parasoft.xtest.logging.api.ParasoftLogger;
 
@@ -29,9 +30,10 @@ public final class JavascriptCoverage {
             // Get working directory
             Path workingDir = Path.of("").toAbsolutePath();
             Path jscAppDir = getJscAppDir(workingDir);
-            String[] validatedArgs = CommandLineParser.parse(args, workingDir, jscAppDir).toArguments();
-
-            String[] effectiveArgs = addAdditionalOption(validatedArgs);
+            CommandLineInput commandLineInput = CommandLineParser.parse(args, workingDir, jscAppDir);
+            String[] validatedArgs = commandLineInput.toArguments();
+            rewriteArguments(commandLineInput, validatedArgs);
+            String[] effectiveArgs = addAdditionalArguments(validatedArgs);
 
             CoverageRunner.main(effectiveArgs);
         } catch (IllegalArgumentException exception) {
@@ -58,11 +60,18 @@ public final class JavascriptCoverage {
         }
     }
 
-    static String[] addAdditionalOption(String[] args) {
+    private static void rewriteArguments(CommandLineInput commandLineInput, String[] args) {
+        if (commandLineInput.getCommand() == CommandLineInput.Command.COVERAGE) {
+            int index = Arrays.asList(args).indexOf("-static");
+            if (index >= 0) {
+                args[index] = "-app";
+            }
+        }
+    }
+
+    static String[] addAdditionalArguments(String[] args) {
         List<String> argList = new ArrayList<>(Arrays.asList(args));
-
         argList.add("-ctp");
-
         return argList.toArray(new String[0]);
     }
 }

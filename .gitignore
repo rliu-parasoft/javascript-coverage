@@ -36,20 +36,13 @@ lombok.config
 ~*.tmp
 *.hprof
 
-### Log ###
-/simulator-logs/
-
 ### License ###
 /settings.properties
 /storage/
 /.coverage
 
-### ECU Configuration
-/manager/
-
-### someip-simulator
-/ecu.pid
-/ecu.port
+### report
+/reports
 
 /.env.local
 

@@ -2,6 +2,12 @@ plugins {
     id 'base'
 }
 
+tasks.named('clean') {
+    doFirst {
+        delete('reports')
+    }
+}
+
 allprojects {
     group = 'com.parasoft.jscov'
     version = '1.0.0'
@@ -84,7 +90,7 @@ tasks.register('distribution', Zip) {
     reproducibleFileOrder = true
     preserveFileTimestamps = false
 
-    dependsOn(project(':javascript-coverage').tasks.named('shadowJar'))
+    dependsOn(project(':javascript-coverage-cli').tasks.named('shadowJar'))
     // Ensure integration dist artifacts are built before packaging.
     dependsOn(integrationDistByProject.values().collect { it.buildDependencies })
 
@@ -117,7 +123,7 @@ tasks.register('distribution', Zip) {
     }
 
     // jscov.jar at zip root (module runnable jar)
-    from(project(':javascript-coverage').tasks.named('shadowJar')) {
+    from(project(':javascript-coverage-cli').tasks.named('shadowJar')) {
         into('')
     }
 }

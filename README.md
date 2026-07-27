@@ -10,7 +10,7 @@ Gradle multi-module project that builds a single distribution zip containing:
 
 Prerequisites:
 - JDK 21 must be available as a local Gradle toolchain (this project uses `java.toolchain.languageVersion = 21`).
-  - If you don't have JDK 21 installed, `:javascript-coverage:compileJava` will fail with "Cannot find a Java installation ... languageVersion=21".
+  - If you don't have JDK 21 installed, `:javascript-coverage-cli:compileJava` will fail with "Cannot find a Java installation ... languageVersion=21".
 - Node is not required for the current skeleton build (integration modules are placeholders), but future integration modules may require it.
 
 Build the distribution artifact:
@@ -31,7 +31,7 @@ Note:
 
 ## Modules
 
-- `:javascript-coverage`
+- `:javascript-coverage-cli`
   - Java 21 toolchain, compiled with `--release 17` for runtime compatibility.
   - Produces a single runnable jar named `jscov.jar` via the Shadow plugin.
 

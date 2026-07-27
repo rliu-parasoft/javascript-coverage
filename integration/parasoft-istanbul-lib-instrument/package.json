@@ -8,7 +8,8 @@
     "src"
   ],
   "scripts": {
-    "test": "nyc mocha"
+    "test": "nyc --reporter=clover --report-dir build/reports/coverage mocha --reporter xunit > build/test-results/test/report.xml",
+    "lint:report": "eslint -f eslint-formatter-checkstyle -o build/reports/eslint/checkstyle.xml \"src/**/*.js\" \"test/**/*.js\""
   },
   "dependencies": {
     "@babel/core": "^7.23.9",
@@ -19,10 +20,14 @@
   },
   "devDependencies": {
     "@babel/cli": "^7.23.9",
+    "@eslint/js": "^9.0.0",
     "chai": "^4.2.0",
     "clone": "^2.1.2",
     "debug": "^4.1.1",
     "documentation": "^12.1.4",
+    "eslint": "^9.0.0",
+    "eslint-formatter-checkstyle": "9.0.1",
+    "globals": "^15.0.0",
     "js-yaml": "^3.13.1",
     "mocha": "^6.2.3",
     "nopt": "^4.0.1",

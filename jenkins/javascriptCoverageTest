@@ -1,0 +1,315 @@
+def parseRecipientList(String rawRecipients) {
+    def recipients = (rawRecipients ?: '')
+        .split(/[,\s;]+/)
+        .collect { it.trim() }
+        .findAll { !it.isEmpty() }
+
+    if (recipients.isEmpty()) {
+        return []
+    }
+
+    def emailPattern = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/
+    def invalidRecipients = recipients.findAll { !(it ==~ emailPattern) }
+    if (!invalidRecipients.isEmpty()) {
+        error("Invalid email recipients: ${invalidRecipients.join(', ')}")
+    }
+
+    return recipients.unique()
+}
+
+def extractFailureReason(String logPath) {
+    if (!fileExists(logPath)) {
+        return 'unknown'
+    }
+
+    for (String line : readFile(logPath).readLines()) {
+        def matcher = (line =~ /(?i)^\s*(FAILURE:|ERROR:)\s*(.+)\s*$/)
+        if (matcher.matches()) {
+            return matcher[0][2].trim()
+        }
+    }
+
+    return 'unknown'
+}
+
+pipeline {
+    agent { label params.AGENT_LABEL }
+
+    options {
+        timestamps()
+    }
+
+    parameters {
+        string(
+            name: 'AGENT_LABEL',
+            defaultValue: 'JSC-Builder',
+            description: 'Jenkins agent label expression used to run this job.'
+        )
+        string(
+            name: 'NOTIFY_RECIPIENTS',
+            description: 'Failure email recipients (comma-separated).'
+        )
+        string(
+            name: 'JTEST_HOME',
+            description: 'Path to Jtest installation directory (must contain integration/gradle/init.gradle).'
+        )
+        string(
+            name: 'PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR',
+            description: 'Path to Parasoft Multi-Language Pack install directory (must contain multilanguage-pack.sh).'
+        )
+        booleanParam(
+            name: 'PUBLISH_REPORT_TO_DTP',
+            defaultValue: false,
+            description: 'Publish Jtest reports to DTP (used as -Djtest.publish).'
+        )
+    }
+
+    stages {
+        stage('Preflight') {
+            steps {
+                sh '''\
+                    #!/usr/bin/env bash
+                    set -e
+                    command -v bash >/dev/null 2>&1 || { echo "ERROR: bash is required on this Jenkins agent."; exit 1; }
+                    command -v java >/dev/null 2>&1 || { echo "ERROR: java is required on this Jenkins agent."; exit 1; }
+                    '''.stripIndent()
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Prepare Jtest Settings') {
+            steps {
+                script {
+                    def settingsPath = 'localsettings.properties'
+                    def dtpUrl = params.DTP_URL
+                    def dtpUser = params.DTP_USER
+                    def dtpPassword = params.DTP_PASSWORD
+
+                    def generated = """\
+                        parasoft.eula.accepted=true
+
+                        jtest.exclude=com.parasoft.jscov:integration/**,com.parasoft.jscov:parasoft-istanbul-lib-instrument/**
+
+                        jtest.license.custom_edition_features=Jtest,Unit Test,Static Analysis,Coverage,Flow Analysis,Change Based Testing,Security Rules,Unit Test Spring Framework,CWE Rules,Unit Test Bulk Creation,OWASP Rules,Unit Test Tier 1,PCI DSS Rules,Unit Test Tier 2,DISA STIG Rules,Unit Test Tier 3,DTP Publish,Unit Test Tier 4,Automation,Desktop Command Line
+                        jtest.license.network.edition=custom_edition
+                        jtest.license.network.type=ls
+                        jtest.license.use_network=true
+
+                        license.network.auth.enabled=false
+                        license.network.use.specified.server=false
+
+                        console.activate.on.text=false
+                        console.verbosity.level=high
+
+                        dtp.url=${dtpUrl}
+                        dtp.user=${dtpUser}
+                        dtp.password=${dtpPassword}
+                        dtp.project=JavascriptCoverage
+                        session.tag=JavascriptCoverage
+                        dtp.share.enabled=true
+
+                        report.active_rules=true
+                        report.file.name=report
+                        report.location=./report
+                        report.archive=true
+                        report.associations=true
+                        report.authors_details=true
+                        report.contexts_details=true
+                        report.developer_errors=true
+                        report.developer_reports=true
+                        report.suppressed_msgs=true
+                        report.setup.problems=bottom
+                        techsupport.create.on.exit=true
+                        techsupport.enabled=true
+                        techsupport.include.reports=true
+                        techsupport.include.sources=true
+
+                        report.coverage.images=JavascriptCoverage
+                        """.stripIndent()
+
+                    writeFile file: settingsPath, text: generated.trim() + '\n'
+
+                    if (!fileExists(settingsPath)) {
+                        error("Failed to create settings file at: ${settingsPath}")
+                    }
+                }
+            }
+        }
+
+        stage('Jtest (Static Analysis + Unit Tests)') {
+            steps {
+                script {
+                    def publishReportToDtp = params.PUBLISH_REPORT_TO_DTP ? 'true' : 'false'
+
+                    sh """\
+                        #!/usr/bin/env bash
+                        set -euo pipefail
+
+                        chmod +x ./gradlew
+                        ./gradlew clean
+
+                        PublishReportToDtp="${publishReportToDtp}"
+
+                        ./gradlew --no-daemon --no-parallel --stacktrace -i jtest -I "${params.JTEST_HOME}/integration/gradle/init.gradle" -D"jtest.config=dtp://Recommended Rules [Parasoft SOAVirt]" -D"jtest.report=./reports/static" -D"jtest.publish=\${PublishReportToDtp}" -D"jtest.settings=localsettings.properties" 2>&1 | tee jtest-static.log
+
+                        ./gradlew --no-daemon --no-parallel --stacktrace -i :javascript-coverage-cli:jtest-agent :javascript-coverage-cli:test jtest -I "${params.JTEST_HOME}/integration/gradle/init.gradle" -D"jtest.config=builtin://Unit Tests" -D"jtest.report=./reports/unit" -D"jtest.publish=\${PublishReportToDtp}" -D"jtest.settings=localsettings.properties" --continue 2>&1 | tee jtest-unit.log
+
+                        """.stripIndent()
+                }
+            }
+        }
+
+        stage('Static Analysis (JS)') {
+            steps {
+                sh '''\
+                    #!/usr/bin/env bash
+                    set -euo pipefail
+                    ./gradlew :integration:lintReport 2>&1 | tee integration-lint.log
+                    '''.stripIndent()
+            }
+        }
+        
+        stage('Publish ESLint To DTP (MLP) - parasoft-istanbul-lib-instrument') {
+            steps {
+                script {
+                    def settingsFile = "mlp.properties"
+                    def dtpUrl = params.DTP_URL
+                    def dtpUser = params.DTP_USER
+                    def dtpPassword = params.DTP_PASSWORD
+
+                    def settingsContent = [
+                        "dtp.url=${dtpUrl}",
+                        "dtp.user=${dtpUser}",
+                        "dtp.password=${dtpPassword}",
+                        'dtp.project=JavascriptCoverage',
+                        'session.tag=${sessionTag}',
+                        'license.release.on.exit=true',
+                        'console.verbosity.level=high',
+                        'logging.verbose=true',
+                        'logging.scontrol.verbose=true',
+                        'scope.path.accept.wildcard=*.ts,*.tsx,*.js',
+                        'parasoft.eula.accepted=true'
+                    ].join('\n') + '\n'
+
+                    writeFile file: settingsFile, text: settingsContent
+
+                    try {
+                        withEnv([
+                            "PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR=${params.PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR}",
+                            'sessionTag=JavascriptCoverage_parasoft-istanbul-lib-instrument'
+                        ]) {
+                            bat """\
+                                @echo on
+
+                                "%PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR%\\multilanguage-pack.bat" -tool ESLint -results.file "integration\\parasoft-istanbul-lib-instrument\\build\\reports\\eslint\\checkstyle.xml" -source.dir "integration\\parasoft-istanbul-lib-instrument\\src" -settings "${settingsFile}"
+                                """.stripIndent()
+                        }
+                    } finally {
+                        if (fileExists(settingsFile)) {
+                            bat "del /f /q \"${settingsFile}\""
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Unit Tests (JS)') {
+            steps {
+                sh '''\
+                    #!/usr/bin/env bash
+                    set -euo pipefail
+                    ./gradlew :integration:test 2>&1 | tee integration-test.log
+                    '''.stripIndent()
+            }
+        }
+    }
+
+    post {
+        success {
+            build(
+                job: 'javascript.coverage.build',
+                parameters: [
+                    string(
+                        name: 'BranchToBuild',
+                        value: params.BranchToBuild
+                    )
+                ],
+                wait: false,
+                propagate: false
+            )
+        }
+
+        always {
+            recordCoverage(
+                id: 'js-coverage',
+                name: 'Javascript Coverage',
+                enabledForFailure: true,
+                failOnError: false,
+                tools: [[parser: 'CLOVER', pattern: 'integration/**/build/reports/coverage/clover.xml']]
+            )
+            recordParasoftCoverage (
+                pattern: 'reports/unit/coverage.xml',
+                sourceCodeEncoding: 'UTF-8'
+            )
+            recordIssues tools: [
+                parasoftFindings(pattern: 'reports/static/report.xml'),
+                checkStyle(pattern: '**/build/reports/eslint/checkstyle.xml')
+            ], enabledForFailure: true
+            junit testResults: 'integration/**/build/test-results/test/report.xml', allowEmptyResults: true
+            archiveArtifacts artifacts: '**/build/reports/**,**/reports/**,*.log', allowEmptyArchive: true
+        }
+
+        failure {
+            script {
+                def recipients = ((params.NOTIFY_RECIPIENTS ?: '') as String).trim()
+                if (!recipients) {
+                    recipients = ((env.NOTIFY_RECIPIENTS ?: '') as String).trim()
+                }
+
+                def recipientList = parseRecipientList(recipients)
+                if (recipientList.isEmpty()) {
+                    echo 'NOTIFY_RECIPIENTS is empty; skipping failure email.'
+                    return
+                }
+
+                def logPaths = ['jtest-static.log', 'jtest-unit.log', 'integration-lint.log', 'integration-test.log']
+                def failureReason = 'unknown'
+                for (String logPath : logPaths) {
+                    def reason = extractFailureReason(logPath)
+                    if (reason != 'unknown') {
+                        failureReason = reason
+                        break
+                    }
+                }
+
+                mail(
+                    to: recipientList.join(','),
+                    subject: "[javascript-coverage] Job failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """\
+                        Job failed.
+
+                        Build URL: ${env.BUILD_URL}
+                        Failure Reason: ${failureReason}
+
+                        Logs:
+                        - jtest-static.log
+                        - jtest-unit.log
+                        - integration-lint.log
+                        - integration-test.log
+
+                        Reports:
+                        - Jtest static: ${env.BUILD_URL}artifact/reports/static/
+                        - Jtest unit: ${env.BUILD_URL}artifact/reports/unit/
+                        - ESLint Checkstyle XML: ${env.BUILD_URL}artifact/**/build/reports/eslint/checkstyle.xml
+                        - Clover XML: ${env.BUILD_URL}artifact/integration/**/build/reports/coverage/clover.xml
+                        """.stripIndent()
+                )
+            }
+        }
+    }
+}

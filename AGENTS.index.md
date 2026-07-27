@@ -8,7 +8,7 @@ Defines scope-based routing for additional AGENTS files.
 
 ## Scope Routes
 - **JavaScript work** → `integration/AGENTS.md`
-- **Java work** → `javascript-coverage/AGENTS.md`
+- **Java work** → `javascript-coverage-cli/AGENTS.md`
 - **Mixed work** → Load both
 
 ## Scope Triggers

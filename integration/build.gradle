@@ -16,3 +16,31 @@ subprojects {
         description = 'Outgoing distribution artifacts for root packaging (e.g., .tgz, folder, etc.).'
     }
 }
+
+tasks.register('test') {
+    group = 'verification'
+    description = 'Runs all integration module test tasks.'
+}
+
+tasks.register('lintReport') {
+    group = 'verification'
+    description = 'Runs all integration module lintReport tasks.'
+}
+
+gradle.projectsEvaluated {
+    def testDeps = subprojects.collectMany { p ->
+        [p.tasks.findByName('test')]
+    }.findAll { it != null }
+
+    tasks.named('test').configure {
+        dependsOn(testDeps)
+    }
+
+    def lintReportDeps = subprojects.collectMany { p ->
+        [p.tasks.findByName('lintReport')]
+    }.findAll { it != null }
+
+    tasks.named('lintReport').configure {
+        dependsOn(lintReportDeps)
+    }
+}

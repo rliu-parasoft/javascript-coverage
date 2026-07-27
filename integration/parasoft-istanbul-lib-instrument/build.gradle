@@ -29,7 +29,19 @@ tasks.register('test', NpmTask) {
 
     dependsOn(tasks.named('npmInstall'))
     workingDir.set(projectDir)
+    doFirst {
+        project.file('build/test-results/test').mkdirs()
+    }
     args = ['test']
+}
+
+tasks.register('lintReport', NpmTask) {
+    group = 'verification'
+    description = 'Runs the module npm lint and writes a Checkstyle XML report for Jenkins Warnings NG.'
+
+    dependsOn(tasks.named('npmInstall'))
+    workingDir.set(projectDir)
+    args = ['run', 'lint:report']
 }
 
 artifacts {

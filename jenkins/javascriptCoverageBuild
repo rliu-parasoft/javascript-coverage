@@ -1,0 +1,216 @@
+def parseRecipientList(String rawRecipients) {
+    def recipients = (rawRecipients ?: '')
+        .split(/[,\s;]+/)
+        .collect { it.trim() }
+        .findAll { !it.isEmpty() }
+
+    if (recipients.isEmpty()) {
+        return []
+    }
+
+    def emailPattern = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/
+    def invalidRecipients = recipients.findAll { !(it ==~ emailPattern) }
+    if (!invalidRecipients.isEmpty()) {
+        error("Invalid email recipients: ${invalidRecipients.join(', ')}")
+    }
+
+    return recipients.unique()
+}
+
+def extractFailureReason(String logPath) {
+    if (!fileExists(logPath)) {
+        return 'unknown'
+    }
+
+    for (String line : readFile(logPath).readLines()) {
+        def matcher = (line =~ /(?i)^\s*(FAILURE:|ERROR:)\s*(.+)\s*$/)
+        if (matcher.matches()) {
+            return matcher[0][2].trim()
+        }
+    }
+
+    return 'unknown'
+}
+
+pipeline {
+    agent { label params.AGENT_LABEL }
+
+    options {
+        timestamps()
+        skipDefaultCheckout(true)
+    }
+
+    parameters {
+        string(
+            name: 'AGENT_LABEL',
+            defaultValue: 'JSC-Builder',
+            description: 'Jenkins agent label expression used to run this job.'
+        )
+        string(
+            name: 'NOTIFY_RECIPIENTS',
+            description: 'Failure email recipients (comma-separated).'
+        )
+        string(
+            name: 'FILES_TO_UPLOAD',
+            defaultValue: 'build/distributions/parasoft_javascript_coverage_*.zip',
+            description: 'Artifact glob(s) to upload/archive.'
+        )
+        booleanParam(
+            name: 'PUBLISH_TO_REPO',
+            defaultValue: true,
+            description: 'Upload build artifacts to the file server.'
+        )
+    }
+
+    stages {
+        stage('Preflight') {
+            steps {
+                sh '''\
+                    #!/usr/bin/env bash
+                    set -e
+                    command -v bash >/dev/null 2>&1 || { echo "ERROR: bash is required on this Jenkins agent."; exit 1; }
+                    command -v java >/dev/null 2>&1 || { echo "ERROR: java is required on this Jenkins agent."; exit 1; }
+                    '''.stripIndent()
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh '''\
+                    #!/usr/bin/env bash
+                    set -euo pipefail
+
+                    chmod +x ./gradlew
+
+                    # Refresh dependencies in the weekends
+                    dayOfWeek=$(date +%A)
+                    if [ "$dayOfWeek" == "Saturday" ]; then
+                        export REFRESH_DEPENDENCIES="true"
+                    elif [ "$dayOfWeek" == "Sunday" ]; then
+                        export REFRESH_DEPENDENCIES="true"
+                    fi
+
+                    chmod +x ./gradlew
+                    if [ "${REFRESH_DEPENDENCIES:-false}" = "true" ]; then
+                      ./gradlew --refresh-dependencies clean dist 2>&1 | tee build.log
+                    else
+                      ./gradlew clean dist 2>&1 | tee build.log
+                    fi
+                    '''.stripIndent()
+            }
+        }
+
+        stage('Upload') {
+            when {
+                expression {
+                    return params.PUBLISH_TO_REPO
+                }
+            }
+            steps {
+                script {
+                    if (params.IS_CHENGDU) {
+                        sh '''\
+                            #!/usr/bin/env bash
+                            set -euo pipefail
+                            set +x
+
+                            command -v curl >/dev/null 2>&1 || { echo "ERROR: curl is required to publish artifacts."; exit 1; }
+                            command -v tar >/dev/null 2>&1 || { echo "ERROR: tar is required to publish artifacts."; exit 1; }
+                            command -v ssh >/dev/null 2>&1 || { echo "ERROR: ssh is required to publish artifacts."; exit 1; }
+
+                            echo "Updating the fileserver scripts..."
+                            curl -s https://distros.parasoftcn.com/fileserver-scripts.tar | tar x
+
+                            fileserver_user_host="modtest@192.168.3.106"
+                            fileserver_builds_dir="/home/modtest/dists/javascript-coverage/builds"
+                            branch="${BRANCH_NAME:-${CHANGE_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}}"
+                            commit="$(git rev-parse HEAD)"
+
+                            fileserver-scripts/create-build-and-upload.sh \
+                              --user-host "${fileserver_user_host}" \
+                              --builds-dir "${fileserver_builds_dir}" \
+                              --branch "${branch}" \
+                              --commit "${commit}" \
+                              --build-name "$(date '+%Y-%m-%d')" \
+                              --build-id "${BUILD_TAG}" \
+                              --build-type snapshot \
+                              --links-to latest_build \
+                              --overwrite true \
+                              -- \
+                                $(echo "${FILES_TO_UPLOAD}" | tr "," " ") 2>&1 | tee upload.log
+
+                            exitValue=$?
+
+                            ssh "${fileserver_user_host}" "\
+                              chmod 755 -R '${fileserver_builds_dir}'; \
+                              cd '${fileserver_builds_dir}/latest_build'; \
+                              /home/modtest/dists/ptest/scripts/auto-generate-htaccess.sh \
+                              "
+
+                            ssh "${fileserver_user_host}" "\
+                              cleanup \
+                                --path '${fileserver_builds_dir}' \
+                                --days 20 \
+                              "
+
+                            exit $exitValue
+                            '''.stripIndent()
+                    } else {
+                        echo 'IS_CHENGDU is false; upload is skipped. TODO.'
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: "${params.FILES_TO_UPLOAD},*.log", allowEmptyArchive: true
+        }
+
+        failure {
+            script {
+                def recipients = ((params.NOTIFY_RECIPIENTS ?: '') as String).trim()
+                if (!recipients) {
+                    recipients = ((env.NOTIFY_RECIPIENTS ?: '') as String).trim()
+                }
+
+                def recipientList = parseRecipientList(recipients)
+                if (recipientList.isEmpty()) {
+                    echo 'NOTIFY_RECIPIENTS is empty; skipping failure email.'
+                    return
+                }
+
+                def logPaths = ['build.log', 'upload.log']
+                def failureReason = 'unknown'
+                for (String logPath : logPaths) {
+                    def reason = extractFailureReason(logPath)
+                    if (reason != 'unknown') {
+                        failureReason = reason
+                        break
+                    }
+                }
+
+                mail(
+                    to: recipientList.join(','),
+                    subject: "[javascript-coverage] Job failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """\
+                        Job failed.
+
+                        Build URL: ${env.BUILD_URL}
+                        Failure Reason: ${failureReason}
+
+                        Artifacts:
+                        - ${env.BUILD_URL}artifact/${params.FILES_TO_UPLOAD}
+                        """.stripIndent()
+                )
+            }
+        }
+    }
+}

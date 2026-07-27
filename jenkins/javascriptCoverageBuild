@@ -1,3 +1,13 @@
+/*
+ * Configure these parameters in the Jenkins job UI:
+ *
+ * AGENT_LABEL: String
+ * FILES_TO_UPLOAD: String
+ * PUBLISH_TO_REPO: Boolean
+ * IS_CHENGDU: Boolean
+ * NOTIFY_RECIPIENTS: String
+ */
+
 def parseRecipientList(String rawRecipients) {
     def recipients = (rawRecipients ?: '')
         .split(/[,\s;]+/)
@@ -38,28 +48,6 @@ pipeline {
     options {
         timestamps()
         skipDefaultCheckout(true)
-    }
-
-    parameters {
-        string(
-            name: 'AGENT_LABEL',
-            defaultValue: 'JSC-Builder',
-            description: 'Jenkins agent label expression used to run this job.'
-        )
-        string(
-            name: 'NOTIFY_RECIPIENTS',
-            description: 'Failure email recipients (comma-separated).'
-        )
-        string(
-            name: 'FILES_TO_UPLOAD',
-            defaultValue: 'build/distributions/parasoft_javascript_coverage_*.zip',
-            description: 'Artifact glob(s) to upload/archive.'
-        )
-        booleanParam(
-            name: 'PUBLISH_TO_REPO',
-            defaultValue: true,
-            description: 'Upload build artifacts to the file server.'
-        )
     }
 
     stages {

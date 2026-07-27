@@ -1,3 +1,17 @@
+/*
+ * Configure these parameters in the Jenkins job UI:
+ *
+ * AGENT_LABEL: String
+ * DTP_URL: String
+ * DTP_USER: String
+ * DTP_PASSWORD: Password
+ * JTEST_HOME: String
+ * PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR: String
+ * PUBLISH_REPORT_TO_DTP: Boolean
+ * BranchToBuild: String
+ * NOTIFY_RECIPIENTS: String
+ */
+
 def parseRecipientList(String rawRecipients) {
     def recipients = (rawRecipients ?: '')
         .split(/[,\s;]+/)
@@ -37,31 +51,6 @@ pipeline {
 
     options {
         timestamps()
-    }
-
-    parameters {
-        string(
-            name: 'AGENT_LABEL',
-            defaultValue: 'JSC-Builder',
-            description: 'Jenkins agent label expression used to run this job.'
-        )
-        string(
-            name: 'NOTIFY_RECIPIENTS',
-            description: 'Failure email recipients (comma-separated).'
-        )
-        string(
-            name: 'JTEST_HOME',
-            description: 'Path to Jtest installation directory (must contain integration/gradle/init.gradle).'
-        )
-        string(
-            name: 'PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR',
-            description: 'Path to Parasoft Multi-Language Pack install directory (must contain multilanguage-pack.sh).'
-        )
-        booleanParam(
-            name: 'PUBLISH_REPORT_TO_DTP',
-            defaultValue: false,
-            description: 'Publish Jtest reports to DTP (used as -Djtest.publish).'
-        )
     }
 
     stages {

@@ -8,12 +8,8 @@ public final class CommonMessages extends NLS {
         NLS.initMessages(CommonMessages.class);
     }
 
-    public static String UNSUPPORTED_COMMAND;
-    public static String MISSING_REQUIRED_PARAMETER;
-    public static String MISSING_VALUE_FOR_PARAMETER;
-    public static String UNSPECIFIED_PARAMETER;
-    public static String STATIC_COVERAGE_JSON_FILE_NOT_FOUND;
-    public static String PROPERTIES_FILE_NOT_FOUND;
-    public static String UNKNOWN_PARAMETERS;
-    public static String UNEXPECTED_VALUE_FOR_PARAMETER;
+    public static String TESTMAP_UNSUPPORTED_MESSAGE;
+    public static String COMPARE_UNSUPPORTED_MESSAGE;
+    public static String INVALID_APPLICATION_DIRECTORY_MESSAGE;
+    public static String APPLICATION_PARAMETER_DESCRIPTION;
 }

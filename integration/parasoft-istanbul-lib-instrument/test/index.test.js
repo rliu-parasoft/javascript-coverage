@@ -53,10 +53,10 @@ describe('instrumenter', () => {
     });
 
     it('logs a load notice once when the module is required', () => {
-        const originalWarn = console.warn;
+        const originalInfo = console.info;
         const originalNoticeState = global[loadNoticeKey];
         const notices = [];
-        console.warn = message => {
+        console.info = message => {
             notices.push(message);
         };
 
@@ -66,7 +66,7 @@ describe('instrumenter', () => {
             assert.ok(index);
             loadIndexFromCache();
         } finally {
-            console.warn = originalWarn;
+            console.info = originalInfo;
             if (originalNoticeState === undefined) {
                 delete global[loadNoticeKey];
             } else {
@@ -75,7 +75,7 @@ describe('instrumenter', () => {
         }
 
         assert.deepEqual(notices, [
-            '[parasoft-istanbul-lib-instrument] loaded version 6.0.3-1; this Parasoft fork is active.'
+            '[parasoft-istanbul-lib-instrument] loaded version 6.0.3-1'
         ]);
     });
 });

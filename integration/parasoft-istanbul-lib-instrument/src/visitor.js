@@ -3,6 +3,8 @@ const { template } = require('@babel/core');
 const { defaults } = require('@istanbuljs/schema');
 const { SourceCoverage } = require('./source-coverage');
 const { SHA, MAGIC_KEY, MAGIC_VALUE } = require('./constants');
+const projectPathMapper = require('./project-path-mapper');
+const writeStaticCoverage = require('./static-coverage');
 
 // pattern for istanbul to ignore a section
 const COMMENT_RE = /^\s*istanbul\s+ignore\s+(if|else|next)(?=\W|$)/;
@@ -775,6 +777,11 @@ function programVisitor(types, sourceFilePath = 'unknown.js', opts = {}) {
             visitState.cov.freeze();
             const coverageData = visitState.cov.toJSON();
             if (shouldIgnoreFile(path.find(p => p.isProgram()))) {
+                writeStaticCoverage(
+                    sourceFilePath,
+                    coverageData,
+                    projectPathMapper.map(sourceFilePath)
+                );
                 return {
                     fileCoverage: coverageData,
                     sourceMappingURL: visitState.sourceMappingURL
@@ -832,6 +839,11 @@ function programVisitor(types, sourceFilePath = 'unknown.js', opts = {}) {
                 )
             );
             path.node.body.unshift(cv);
+            writeStaticCoverage(
+                sourceFilePath,
+                coverageData,
+                projectPathMapper.map(sourceFilePath)
+            );
             return {
                 fileCoverage: coverageData,
                 sourceMappingURL: visitState.sourceMappingURL

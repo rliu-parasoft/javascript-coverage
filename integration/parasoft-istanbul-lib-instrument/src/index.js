@@ -14,8 +14,8 @@ function logLoadNotice() {
     }
 
     global[loadNoticeKey] = true;
-    console.warn(
-        `[${name}] loaded version ${version}; this Parasoft fork is active.`
+    console.info(
+        `[${name}] loaded version ${version}`
     );
 }
 

@@ -86,9 +86,9 @@ tasks.register('distribution', Zip) {
     archiveFileName = "parasoft_javascript_coverage_${project.version}.zip"
     destinationDirectory = layout.buildDirectory.dir('distributions')
 
-    // CI/CD friendliness: stable ordering + no timestamps => reproducible zip byte-for-byte.
+    // Keep stable ordering while preserving source file timestamps in the distribution.
     reproducibleFileOrder = true
-    preserveFileTimestamps = false
+    preserveFileTimestamps = true
 
     dependsOn(project(':javascript-coverage-cli').tasks.named('shadowJar'))
     // Ensure integration dist artifacts are built before packaging.
@@ -122,7 +122,7 @@ tasks.register('distribution', Zip) {
         into('')
     }
 
-    // jscov.jar at zip root (module runnable jar)
+    // parasoft-jscov.jar at zip root (module runnable jar)
     from(project(':javascript-coverage-cli').tasks.named('shadowJar')) {
         into('')
     }

@@ -1,7 +1,7 @@
 # javascript-coverage
 
 Gradle multi-module project that builds a single distribution zip containing:
-- Java CLI jar: `jscov.jar` (built via ShadowJar)
+- Java CLI jar: `parasoft-jscov.jar` (built via ShadowJar)
 - Integration (Node) module artifacts under `integration/<module>/`
 - Placeholder `docs/` and `licenses/` directories
 - `EULA.txt` and `settings.properties` at the zip root
@@ -33,7 +33,7 @@ Note:
 
 - `:javascript-coverage-cli`
   - Java 21 toolchain, compiled with `--release 17` for runtime compatibility.
-  - Produces a single runnable jar named `jscov.jar` via the Shadow plugin.
+  - Produces a single runnable jar named `parasoft-jscov.jar` via the Shadow plugin.
 
 - `:integration`
   - Aggregator for "integration" modules (expected to be Node projects in the future).
@@ -54,7 +54,7 @@ integration/
   parasoft-istanbul-lib-instrument/
     parasoft-istanbul-lib-instrument-6.0.3-1.tgz
 EULA.txt
-jscov.jar
+parasoft-jscov.jar
 settings.properties
 ```
 

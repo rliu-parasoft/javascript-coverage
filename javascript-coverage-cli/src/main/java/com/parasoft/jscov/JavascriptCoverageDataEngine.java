@@ -156,7 +156,7 @@ public class JavascriptCoverageDataEngine implements ICoverageDataEngine
     @Override
     public String getCLICommandName()
     {
-        return "java -jar jscov.jar";
+        return "java -jar parasoft-jscov.jar";
     }
 
 

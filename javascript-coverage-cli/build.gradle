@@ -39,7 +39,7 @@ jar {
 // Produce a single runnable jar (includes dependencies) for distribution packaging.
 shadowJar {
     // Publish the runnable jar with the final expected name.
-    archiveFileName = 'jscov.jar'
+    archiveFileName = 'parasoft-jscov.jar'
 
     manifest {
         attributes('Main-Class': application.mainClass.get())

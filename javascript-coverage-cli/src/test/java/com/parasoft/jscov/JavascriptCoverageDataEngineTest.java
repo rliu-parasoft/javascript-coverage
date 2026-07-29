@@ -38,6 +38,12 @@ class JavascriptCoverageDataEngineTest {
             "JavaScript Coverage does not support -include or -exclude yet.";
 
     @Test
+    void getCLICommandName_usesParasoftJarName() {
+        assertEquals("java -jar parasoft-jscov.jar",
+                new JavascriptCoverageDataEngine().getCLICommandName());
+    }
+
+    @Test
     void getEngineOptions_overridesAppHelpForCoverageAndImpacted() {
         ICoverageDataEngine.CommandLineArgument[] options = new JavascriptCoverageDataEngine().getEngineOptions();
 

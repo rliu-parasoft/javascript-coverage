@@ -5,6 +5,8 @@ const { SourceCoverage } = require('./source-coverage');
 const { SHA, MAGIC_KEY, MAGIC_VALUE } = require('./constants');
 const projectPathMapper = require('./project-path-mapper');
 const writeStaticCoverage = require('./static-coverage');
+const staticCoverageEnabled =
+    process.env.PARASOFT_STATIC_COVERAGE_ENABLE === 'true';
 
 // pattern for istanbul to ignore a section
 const COMMENT_RE = /^\s*istanbul\s+ignore\s+(if|else|next)(?=\W|$)/;
@@ -18,6 +20,13 @@ function genVar(filename) {
     const hash = createHash(SHA);
     hash.update(filename);
     return 'cov_' + parseInt(hash.digest('hex').substr(0, 12), 16).toString(36);
+}
+
+function writeStaticCoverageIfEnabled(sourceFilePath, coverageData) {
+    if (!staticCoverageEnabled) {
+        return;
+    }
+    writeStaticCoverage(sourceFilePath, coverageData, projectPathMapper.map(sourceFilePath));
 }
 
 // VisitState holds the state of the visitor, provides helper functions
@@ -777,11 +786,7 @@ function programVisitor(types, sourceFilePath = 'unknown.js', opts = {}) {
             visitState.cov.freeze();
             const coverageData = visitState.cov.toJSON();
             if (shouldIgnoreFile(path.find(p => p.isProgram()))) {
-                writeStaticCoverage(
-                    sourceFilePath,
-                    coverageData,
-                    projectPathMapper.map(sourceFilePath)
-                );
+                writeStaticCoverageIfEnabled(sourceFilePath, coverageData);
                 return {
                     fileCoverage: coverageData,
                     sourceMappingURL: visitState.sourceMappingURL
@@ -839,11 +844,7 @@ function programVisitor(types, sourceFilePath = 'unknown.js', opts = {}) {
                 )
             );
             path.node.body.unshift(cv);
-            writeStaticCoverage(
-                sourceFilePath,
-                coverageData,
-                projectPathMapper.map(sourceFilePath)
-            );
+            writeStaticCoverageIfEnabled(sourceFilePath, coverageData);
             return {
                 fileCoverage: coverageData,
                 sourceMappingURL: visitState.sourceMappingURL

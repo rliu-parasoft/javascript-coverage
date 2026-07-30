@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Istanbul source file coverage",
+  "type": "object",
+  "required": [
+    "path",
+    "statementMap",
+    "fnMap",
+    "branchMap",
+    "s",
+    "f",
+    "b"
+  ],
+  "properties": {
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project": {
+      "type": ["object", "null"],
+      "properties": {
+        "name": { "type": "string" },
+        "root": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "statementMap": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/range" }
+    },
+    "fnMap": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/function" }
+    },
+    "branchMap": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/branch" }
+    },
+    "s": {
+      "$ref": "#/$defs/counterMap"
+    },
+    "f": {
+      "$ref": "#/$defs/counterMap"
+    },
+    "b": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "position": {
+      "type": "object",
+      "required": ["line", "column"],
+      "properties": {
+        "line": { "type": "integer", "minimum": 1 },
+        "column": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "range": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "$ref": "#/$defs/position" },
+        "end": { "$ref": "#/$defs/position" }
+      },
+      "additionalProperties": true
+    },
+    "function": {
+      "type": "object",
+      "required": ["name", "decl", "loc"],
+      "properties": {
+        "name": { "type": "string" },
+        "decl": { "$ref": "#/$defs/range" },
+        "loc": { "$ref": "#/$defs/range" }
+      },
+      "additionalProperties": true
+    },
+    "branch": {
+      "type": "object",
+      "required": ["loc", "type", "locations"],
+      "properties": {
+        "loc": { "$ref": "#/$defs/range" },
+        "type": { "type": "string" },
+        "locations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/range" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "counterMap": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    }
+  }
+}

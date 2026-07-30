@@ -57,6 +57,7 @@ configurations {
 
 dependencies {
     implementation "com.parasoft.xtest.common:com.parasoft.xtest.coverage.all:${parasoftXtestCoverageAllVersion}"
+    implementation "com.networknt:json-schema-validator:${jsonSchemaValidator}"
     implementation "org.apache.logging.log4j:log4j-core:${log4jVersion}"
 
     testImplementation platform("org.junit:junit-bom:${junitBomVersion}")

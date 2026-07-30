@@ -1,16 +1,17 @@
 package com.parasoft.jscov.coverage;
 
+import com.parasoft.jscov.JavascriptCoverageLogger;
+import com.parasoft.jscov.i18n.CommonMessages;
 import com.parasoft.xtest.common.api.IFileTestableInput;
 import com.parasoft.xtest.common.api.ITestableInput;
 import com.parasoft.xtest.common.api.locations.LocationsException;
 import com.parasoft.xtest.common.locations.LocationUtil;
+import com.parasoft.xtest.common.nls.NLS;
 import com.parasoft.xtest.coverage.all.api.IApplicationCoverageData;
 import com.parasoft.xtest.coverage.api.results.IDynamicCoverageInfo;
 import com.parasoft.xtest.coverage.api.results.ILineCoverageInfoBuilder;
 import com.parasoft.xtest.coverage.api.results.IStaticCoverageInfo;
-import com.parasoft.xtest.logging.api.ParasoftLogger;
 
-import java.text.MessageFormat;
 import java.util.*;
 
 public final class ApplicationCoverageData implements IApplicationCoverageData {
@@ -23,7 +24,7 @@ public final class ApplicationCoverageData implements IApplicationCoverageData {
             try {
                 input = LocationUtil.createTestableInput(fileCoverage.getLocationProperties());
             } catch (LocationsException e) {
-                ParasoftLogger.getLogger().warn(MessageFormat.format("Failed to create ITestableInput from properties of file {0}.", fileCoverage.getReferenceId()));
+                JavascriptCoverageLogger.getLogger().warn(NLS.getFormatted(CommonMessages.FAILED_TO_CREATE_ITESTABLEINPUT_FROM_PROPERTIES, fileCoverage.getReferenceId()));
                 continue;
             }
             acceptedInputs.add(input);

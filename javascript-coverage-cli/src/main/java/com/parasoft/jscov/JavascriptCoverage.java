@@ -1,7 +1,6 @@
 package com.parasoft.jscov;
 
 import com.parasoft.xtest.coverage.all.*;
-import com.parasoft.xtest.logging.api.ParasoftLogger;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -32,7 +31,7 @@ public final class JavascriptCoverage {
             JavascriptCoverage coverage = new JavascriptCoverage(args);
             coverage.run();
         } catch (Throwable thr) {
-            ParasoftLogger.getLogger().error(thr);
+            JavascriptCoverageLogger.getLogger().error(thr);
             System.exit(1);
         }
     }

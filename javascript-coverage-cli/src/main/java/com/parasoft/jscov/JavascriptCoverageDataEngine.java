@@ -3,12 +3,14 @@ package com.parasoft.jscov;
 import com.parasoft.jscov.coverage.ApplicationCoverageData;
 import com.parasoft.jscov.coverage.FileCoverage;
 import com.parasoft.jscov.coverage.StaticCoverageParser;
+import com.parasoft.jscov.source.JavascriptSourcesReporterServiceFactory;
 import com.parasoft.jscov.i18n.CommonMessages;
 import com.parasoft.xtest.common.api.MessageSeverity;
 import com.parasoft.xtest.common.api.console.IConsole;
 import com.parasoft.xtest.common.api.progress.IProgressMonitor;
 import com.parasoft.xtest.common.api.telemetry.ITelemetryConfiguration;
 import com.parasoft.xtest.coverage.all.api.*;
+import com.parasoft.xtest.results.api.IResultReporterService;
 import com.parasoft.xtest.services.api.INamedControllerInfo;
 import com.parasoft.xtest.services.api.license.ILicenseDefinitionProvider;
 import com.parasoft.xtest.testcases.api.TestCaseIdentifier;
@@ -55,7 +57,13 @@ public class JavascriptCoverageDataEngine implements ICoverageDataEngine
     @Override
     public Iterator<ServiceDeclaration> getDeclaredServices()
     {
-        return Collections.emptyIterator();
+        List<ServiceDeclaration> services = new ArrayList<>();
+        ServiceDeclaration sourcesReporterFactory = new ServiceDeclaration(
+                IResultReporterService.Factory.class,
+                JavascriptSourcesReporterServiceFactory.class,
+                null);
+        services.add(sourcesReporterFactory);
+        return Collections.unmodifiableList(services).iterator();
     }
 
     @Override

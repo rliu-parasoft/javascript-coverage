@@ -1,10 +1,12 @@
 package com.parasoft.jscov;
 
+import com.parasoft.jscov.source.JavascriptSourcesReporterServiceFactory;
 import com.parasoft.jscov.i18n.CommonMessages;
 import com.parasoft.xtest.common.api.MessageSeverity;
 import com.parasoft.xtest.common.api.console.IConsole;
 import com.parasoft.xtest.coverage.all.api.ICoverageDataEngine;
 import com.parasoft.xtest.coverage.all.api.ICoverageOptions;
+import com.parasoft.xtest.results.api.IResultReporterService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -57,6 +59,17 @@ class JavascriptCoverageDataEngineTest {
         }, appOption.commands);
         assertEquals(ICoverageDataEngine.ArgumentType.Single, appOption.type);
         assertArrayEquals(new String[]{APP_DESCRIPTION}, appOption.description);
+    }
+
+    @Test
+    void getDeclaredServices_registersSourcesReporterFactory() {
+        var services = new JavascriptCoverageDataEngine().getDeclaredServices();
+
+        assertTrue(services.hasNext());
+        ICoverageDataEngine.ServiceDeclaration declaration = services.next();
+        assertFalse(services.hasNext());
+        assertEquals(IResultReporterService.Factory.class, declaration.serviceInterface);
+        assertEquals(JavascriptSourcesReporterServiceFactory.class, declaration.serviceImplementation);
     }
 
     @Test

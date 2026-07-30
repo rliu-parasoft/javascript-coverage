@@ -73,6 +73,28 @@
       },
       "additionalProperties": true
     },
+    "branchLocation": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "object",
+          "properties": {
+            "line": { "type": "integer", "minimum": 1 },
+            "column": { "type": ["integer", "null"], "minimum": 0 }
+          },
+          "additionalProperties": true
+        },
+        "end": {
+          "type": "object",
+          "properties": {
+            "line": { "type": "integer", "minimum": 1 },
+            "column": { "type": ["integer", "null"], "minimum": 0 }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
     "function": {
       "type": "object",
       "required": ["name", "decl", "loc"],
@@ -91,7 +113,7 @@
         "type": { "type": "string" },
         "locations": {
           "type": "array",
-          "items": { "$ref": "#/$defs/range" }
+          "items": { "$ref": "#/$defs/branchLocation" }
         }
       },
       "additionalProperties": true

@@ -6,7 +6,8 @@ const { SHA, MAGIC_KEY, MAGIC_VALUE } = require('./constants');
 const projectPathMapper = require('./project-path-mapper');
 const writeStaticCoverage = require('./static-coverage');
 const staticCoverageEnabled =
-    process.env.PARASOFT_STATIC_COVERAGE_ENABLE === 'true';
+    (process.env.PARASOFT_STATIC_COVERAGE_ENABLE || '').toLowerCase() ===
+    'true';
 
 // pattern for istanbul to ignore a section
 const COMMENT_RE = /^\s*istanbul\s+ignore\s+(if|else|next)(?=\W|$)/;

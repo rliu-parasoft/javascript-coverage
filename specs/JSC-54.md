@@ -30,9 +30,9 @@ Allow users to opt in to static coverage JSON generation with `PARASOFT_STATIC_C
 - Not explicitly defined in Jira.
 
 ## Behavior
-- `visitor.js` evaluates `process.env.PARASOFT_STATIC_COVERAGE_ENABLE === 'true'` once when `visitor.js` is first loaded.
+- `visitor.js` compares `PARASOFT_STATIC_COVERAGE_ENABLE` with `true` case-insensitively once when `visitor.js` is first loaded.
 - When `PARASOFT_STATIC_COVERAGE_ENABLE=true` is set before `visitor.js` is first loaded, project mapping and static coverage JSON generation are enabled.
-- When the environment variable is absent or has any value other than the exact string `true`, `visitor.js` skips both existing `writeStaticCoverage` call sites while project mapping retains its normal behavior.
+- When the environment variable is absent or has any value other than `true` in any letter case, `visitor.js` skips both existing `writeStaticCoverage` call sites while project mapping retains its normal behavior.
 - When generation is disabled, the `.parasoft/static-coverage/{pid}` directory and its generated JSON files are not created as a side effect of using the instrumentation library. (inferred)
 - When generation is enabled, file naming, JSON contents, source-map remapping, duplicate-file handling, and existing filesystem error behavior remain unchanged. (inferred)
 
@@ -43,7 +43,7 @@ Allow users to opt in to static coverage JSON generation with `PARASOFT_STATIC_C
 - `src/static-coverage.js` remains responsible for the existing output format and write algorithm; it is not invoked by the visitor when the feature is disabled.
 
 ## Testing Strategy (inferred)
-- Test exact `true`, absent, and non-`true` visitor behavior, with the value captured at visitor module load.
+- Test case-insensitive `true`, absent, and non-`true` visitor behavior, with the value captured at visitor module load.
 - Test that environment changes after visitor module load do not change the captured behavior.
 - Test instrumentation with the flag disabled to verify no static-coverage output is created.
 - Test instrumentation with the flag enabled to verify the expected JSON output is still created.
@@ -52,7 +52,7 @@ Allow users to opt in to static coverage JSON generation with `PARASOFT_STATIC_C
 - Isolate environment-snapshot cases with separate module cache contexts or child processes.
 
 ## Edge Cases (Optional)
-- Values other than the exact string `true` keep generation disabled. (inferred)
+- Values other than case-insensitive `true` keep generation disabled. (inferred)
 - Changes to the environment variable after module load do not affect the current process. (inferred)
 
 ## Done When (Acceptance Criteria)
@@ -68,17 +68,17 @@ Allow users to opt in to static coverage JSON generation with `PARASOFT_STATIC_C
 - [A2] The flag is read from the process environment by the JavaScript instrumentation package. **Resolved:** Read it from `process.env` when `visitor.js` loads.
 
 ### Unclear Points
-- [U1] Jira does not define whether only the exact value `true` enables generation or whether values such as `1`, `TRUE`, or `yes` should also enable it. **Resolved:** Only the exact string `true` enables generation.
+- [U1] Jira does not define whether only the value `true` enables generation case-insensitively or whether values such as `1` or `yes` should also enable it. **Resolved:** Any letter case of `true` enables generation; other values remain disabled.
 - [U2] Jira does not identify whether the change belongs in `parasoft-istanbul-lib-instrument`, a wrapper, or another integration module. **Resolved:** Use the existing `parasoft-istanbul-lib-instrument` flow, with the feature gate in `src/visitor.js`, the environment-independent `src/project-path-mapper.js` utility, and `src/static-coverage.js` unchanged.
 
 ### Missing Info
 - [M1] The expected behavior when `PARASOFT_STATIC_COVERAGE_ENABLE` is changed after the relevant module is loaded is not stated. **Resolved:** The value is evaluated once when `visitor.js` loads; later environment changes do not affect static coverage generation in that process.
 
 ### Questions for Human
-- [Q1] (re [U1]) Should generation be enabled only when `PARASOFT_STATIC_COVERAGE_ENABLE` is exactly `true` (recommended), or should common truthy spellings be accepted? **Answered:** Only the exact string `true` enables generation.
+- [Q1] (re [U1]) Should generation accept any capitalization of `true`, or should common truthy values such as `1` and `yes` also be accepted? **Answered:** Any letter case of `true` enables generation; other values remain disabled.
 - [Q2] (re [U2]) Should the implementation be limited to the package/module that creates `.parasoft/static-coverage`, with callers left unchanged (recommended)? **Answered:** Do not limit the change to `src/static-coverage.js`; put the gate in `src/visitor.js`, keep `src/project-path-mapper.js` environment-independent, and preserve the relevant visitor call sites.
 - [Q3] (re [M1]) Should the value be evaluated once when the module loads (recommended), or re-evaluated for each generation attempt? **Answered:** Evaluate it once when `visitor.js` loads.
 
 ### Risks
-- [R1] (re [U1]) Inconsistent parsing could enable output unexpectedly in user environments and undermine the default-off requirement. **Mitigation:** Use an exact string comparison and test non-`true` values.
+- [R1] (re [U1]) Inconsistent parsing could enable output unexpectedly in user environments and undermine the default-off requirement. **Mitigation:** Use a case-insensitive comparison with `true` and test non-`true` values.
 - [R2] (re [U2]) Changing the wrong integration boundary could leave the out-of-build side effect intact or affect unrelated coverage behavior. **Mitigation:** Gate both existing visitor write call sites while preserving the writer’s enabled behavior and adding end-to-end instrumentation tests.

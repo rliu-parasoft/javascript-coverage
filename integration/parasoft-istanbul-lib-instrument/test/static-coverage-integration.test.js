@@ -77,7 +77,7 @@ describe('static coverage integration', () => {
         assert.isFalse(fs.existsSync(path.join(directory, '.parasoft')));
     });
 
-    ['false', 'TRUE', '1', 'yes', ''].forEach(environmentValue => {
+    ['false', '1', 'yes', ''].forEach(environmentValue => {
         it(`does not create static coverage output for ${JSON.stringify(environmentValue)}`, () => {
             const directory = createTempDirectory();
 
@@ -87,7 +87,21 @@ describe('static coverage integration', () => {
         });
     });
 
-    it('creates the existing static coverage output for the exact true value', () => {
+    ['TRUE', 'True', 'tRuE'].forEach(environmentValue => {
+        it(`creates static coverage output for ${JSON.stringify(environmentValue)}`, () => {
+            const directory = createTempDirectory();
+
+            instrumentInChild(directory, environmentValue);
+
+            assert.isTrue(
+                fs.existsSync(
+                    path.join(directory, '.parasoft', 'static-coverage')
+                )
+            );
+        });
+    });
+
+    it('creates the existing static coverage output for the true value', () => {
         const directory = createTempDirectory();
 
         instrumentInChild(directory, 'true');

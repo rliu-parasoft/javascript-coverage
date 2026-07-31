@@ -60,6 +60,10 @@ dependencies {
     implementation "com.networknt:json-schema-validator:${jsonSchemaValidator}"
     implementation "org.apache.logging.log4j:log4j-core:${log4jVersion}"
 
+    // Provide an SLF4J 2.x provider so libraries using SLF4J (e.g. json-schema-validator)
+    // do not emit "No SLF4J providers were found" warnings. Routes SLF4J calls to Log4j 2.
+    runtimeOnly "org.apache.logging.log4j:log4j-slf4j2-impl:${log4jVersion}"
+
     testImplementation platform("org.junit:junit-bom:${junitBomVersion}")
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testImplementation "org.mockito:mockito-core:${mockitoVersion}"

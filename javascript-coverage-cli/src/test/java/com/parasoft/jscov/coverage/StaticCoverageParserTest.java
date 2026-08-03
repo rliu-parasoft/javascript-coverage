@@ -248,6 +248,38 @@ class StaticCoverageParserTest {
         }
     }
 
+    @Test
+    void parse_missingApplicationDirectory_reportsListingFailure(@TempDir Path tempDir) {
+        Path missingDirectory = tempDir.resolve("missing");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> StaticCoverageParser.parse(missingDirectory, context, null));
+
+        String expectedMessage = NLS.getFormatted(CommonMessages.FAILED_TO_LIST_ISTANBUL_JSON_FILES,
+                missingDirectory);
+        assertEquals(expectedMessage, ex.getMessage());
+        verify(console).writeln(eq(expectedMessage), eq(MessageSeverity.HIGH));
+    }
+
+    @Test
+    void parse_sourceFileWithoutExtension_usesFileNameForItemIdentity(@TempDir Path appDir)
+            throws IOException {
+        Path json = Files.createFile(appDir.resolve("coverage.json"));
+        IstanbulSourceFileCoverageDto dto = sourceDto("/proj/root/README", project("demo", "/proj/root"));
+
+        try (MockedStatic<IstanbulJsonCoverageReader> reader = mockStatic(IstanbulJsonCoverageReader.class);
+             MockedStatic<IstanbulFunctionLineMapper> mapper = mockStatic(IstanbulFunctionLineMapper.class)) {
+            reader.when(() -> IstanbulJsonCoverageReader.read(json)).thenReturn(dto);
+            mapper.when(() -> IstanbulFunctionLineMapper.map(dto)).thenReturn(List.of());
+
+            List<FileCoverage> result = StaticCoverageParser.parse(appDir, context, null);
+
+            CoverableItemNode fileItem = result.get(0).getStaticItems().get(0);
+            assertEquals("README", fileItem.getDisplayName());
+            assertEquals("README", fileItem.getItemId());
+        }
+    }
+
     private static IstanbulSourceFileCoverageDto sourceDto(String path, IstanbulProjectDto project) {
         IstanbulSourceFileCoverageDto dto = new IstanbulSourceFileCoverageDto();
         dto.setPath(path);

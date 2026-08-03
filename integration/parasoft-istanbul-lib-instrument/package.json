@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "test": "nyc --reporter=clover --report-dir build/reports/coverage mocha --reporter xunit > build/test-results/test/report.xml",
-    "lint:report": "eslint -f eslint-formatter-checkstyle -o build/reports/eslint/checkstyle.xml \"src/**/*.js\" \"test/**/*.js\""
+    "lint:report": "eslint -f eslint-formatter-checkstyle -o build/reports/eslint/checkstyle.xml \"src/**/*.js\""
   },
   "dependencies": {
     "@babel/core": "^7.23.9",

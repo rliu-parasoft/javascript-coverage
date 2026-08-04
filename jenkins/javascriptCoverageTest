@@ -245,11 +245,24 @@ pipeline {
                 pattern: 'reports/unit/coverage.xml',
                 sourceCodeEncoding: 'UTF-8'
             )
-            recordIssues tools: [
-                parasoftFindings(pattern: 'reports/static/report.xml'),
-                checkStyle(pattern: '**/build/reports/eslint/checkstyle.xml')
-            ], enabledForFailure: true
-            junit testResults: 'integration/**/build/test-results/test/report.xml', allowEmptyResults: true
+            recordIssues(
+                tools: [checkStyle(pattern: 'integration/**/build/reports/eslint/checkstyle.xml')],
+                enabledForFailure: true,
+                qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]]
+            )
+            xunit(
+                thresholds: [
+                    failed(unstableThreshold: '0'),
+                    skipped(unstableThreshold: '0')
+                ],
+                tools: [JUnit(
+                    pattern: 'integration/**/build/test-results/test/report.xml',
+                    deleteOutputFiles: true,
+                    failIfNotNew: true,
+                    skipNoTestFiles: false,
+                    stopProcessingIfError: true
+                )]
+            )
             archiveArtifacts artifacts: '**/build/reports/**,**/reports/**,*.log', allowEmptyArchive: true
         }
 

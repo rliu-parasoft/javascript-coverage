@@ -8,7 +8,7 @@
     "src"
   ],
   "scripts": {
-    "test": "nyc --reporter=clover --report-dir build/reports/coverage mocha --reporter xunit > build/test-results/test/report.xml",
+    "test": "nyc --reporter=clover --report-dir build/reports/coverage mocha --reporter xunit --reporter-option output=build/test-results/test/report.xml",
     "lint:report": "eslint -f eslint-formatter-checkstyle -o build/reports/eslint/checkstyle.xml \"src/**/*.js\""
   },
   "dependencies": {

@@ -1,0 +1,66 @@
+{
+  "_comment": "PR path recognition rules. Each category uses a glob array to describe its match condition; matching any glob counts as a hit for the category. Glob subset: ** matches any characters (including /), * matches non-/ characters within a segment, ? matches a single non-/ character. Any other character is treated as a literal (auto-escaped). Matches are always anchored to the full path (equivalent to ^...$). {a,b}, [abc] and ! negation are not supported.",
+  "_output_semantics": "Outputs come in two flavors: (1) NEED_*_TEST_TIA indicates test/source changes; downstream can rely on TIA (Test Impact Analysis) for incremental runs. (2) NEED_*_TEST_FULL indicates build/dependency configuration changes; the TIA baseline is no longer trustworthy so downstream should drop incremental mode and run the full suite. When both are true, FULL takes precedence (full ⊇ incremental). NEED_*_SA signals that the corresponding static analysis should be re-run.",
+  "categories": {
+    "js_test": {
+      "glob": [
+        "integration/**/test/**.test.js"
+      ]
+    },
+    "js_src": {
+      "glob": [
+        "integration/**/src/**.js"
+      ]
+    },
+    "js_sa": {
+      "glob": [
+        "integration/**/eslint.config.cjs"
+      ]
+    },
+    "js_config": {
+      "glob": [
+        "integration/**/package.json",
+        "integration/**/package-lock.json",
+        "integration/**/build.gradle",
+        "integration/build.gradle"
+      ]
+    },
+    "java_test": {
+      "glob": [
+        "javascript-coverage-cli/src/test/**.java"
+      ]
+    },
+    "java_src": {
+      "glob": [
+        "javascript-coverage-cli/src/main/**.java"
+      ]
+    },
+    "java_config": {
+      "glob": [
+        "javascript-coverage-cli/build.gradle",
+        "build.gradle",
+        "settings.gradle",
+        "gradle.properties",
+        "gradle/wrapper/**"
+      ]
+    }
+  },
+  "outputs": {
+    "NEED_JS_TEST_TIA":     { "any_of": ["js_test", "js_src"] },
+    "NEED_JS_TEST_FULL":    { "any_of": ["js_config"] },
+    "NEED_JAVA_TEST_TIA":   { "any_of": ["java_test", "java_src"] },
+    "NEED_JAVA_TEST_FULL":  { "any_of": ["java_config"] },
+    "NEED_JS_SA":           { "any_of": ["js_src", "js_sa"] },
+    "NEED_JAVA_SA":         { "any_of": ["java_src"] }
+  },
+  "csv_order": [
+    "NEED_JS_TEST_TIA",
+    "NEED_JS_TEST_FULL",
+    "NEED_JAVA_TEST_TIA",
+    "NEED_JAVA_TEST_FULL",
+    "NEED_JS_SA",
+    "NEED_JAVA_SA"
+  ]
+}
+
+

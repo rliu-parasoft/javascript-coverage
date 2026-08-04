@@ -1,0 +1,55 @@
+pipeline {
+    agent { label 'JSC-Builder' }
+
+    environment {
+        BITBUCKET_API = 'https://code.parasoftcn.com/rest/api/latest/projects/JSC/repos/javascript-coverage'
+        PR_FILE_PATH_RULES = 'jenkins/scripts/pr-path-rules.json'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                cleanWs()
+                checkout scm
+            }
+        }
+
+        stage('Setup') {
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'jscov-bitbucket-pr-bot', usernameVariable: 'API_USERNAME', passwordVariable: 'API_PASSWORD')
+                ]) {
+                    sh 'bash jenkins/scripts/analyze-pr-changes.sh'
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // TODO: downstream stages consume the pre-analysis result.
+    //
+    // Read `artifacts/steps.csv` FIRST (line 1 = headers, line 2 = values)
+    // and get the six flags:
+    //   NEED_JS_TEST_TIA     — JS test/src changed; run FULL JS tests since there is no TIA for JS(mocha)
+    //   NEED_JS_TEST_FULL    — JS build/dependency config changed; run the FULL JS tests(mocha)
+    //   NEED_JAVA_TEST_TIA   — Java test/src changed; run TIA Java tests(Jtest)
+    //   NEED_JAVA_TEST_FULL  — Java build/dependency config changed; run the full Java tests(Jtest)
+    //   NEED_JS_SA           — JS static analysis(ESLint) must be re-run
+    //   NEED_JAVA_SA         — Java static analysis(Jtest) must be re-run
+    //
+    // Rule: NEED_JS_TEST_* and NEED_JAVA_TEST_* are groups,
+    //       FULL wins over TIA which means is *_FULL is true the full tests must be re-run
+    //       no matter what the value of *_TIA is.
+    // ------------------------------------------------------------------
+
+    post {
+        always {
+            withCredentials([
+                usernamePassword(credentialsId: 'jscov-bitbucket-pr-bot', usernameVariable: 'API_USERNAME', passwordVariable: 'API_PASSWORD')
+            ]) {
+                sh 'bash jenkins/scripts/post-pr-summary.sh'
+            }
+            archiveArtifacts artifacts: 'artifacts/**', allowEmptyArchive: true, fingerprint: false
+        }
+    }
+}

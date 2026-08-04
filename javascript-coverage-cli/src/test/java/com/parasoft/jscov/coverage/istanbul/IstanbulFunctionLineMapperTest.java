@@ -379,6 +379,22 @@ class IstanbulFunctionLineMapperTest {
         assertTrue(result.get(1).getLines().isEmpty());
     }
 
+    @Test
+    void map_functionWithoutCoverage_isOrderedAfterFunctionWithCoveredLines() {
+        IstanbulSourceFileCoverageDto dto = new IstanbulSourceFileCoverageDto();
+        dto.setPath(PATH);
+        dto.setFnMap(Map.of(
+                "empty", function("empty", range(1, 0, 2, 0)),
+                "covered", function("covered", range(5, 0, 6, 0))));
+        dto.setStatementMap(Map.of("s0", range(5, 0, 5, 5)));
+
+        List<FunctionLineCoverageDto> result = IstanbulFunctionLineMapper.map(dto);
+
+        assertEquals(2, result.size());
+        assertEquals("covered", result.get(0).getFnName());
+        assertEquals("empty", result.get(1).getFnName());
+    }
+
     private static PositionDto pos(Integer line, Integer column) {
         PositionDto p = new PositionDto();
         p.setLine(line);

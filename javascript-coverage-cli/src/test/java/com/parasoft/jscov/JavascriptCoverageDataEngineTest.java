@@ -1,26 +1,36 @@
 package com.parasoft.jscov;
 
+import com.parasoft.jscov.coverage.FileCoverage;
+import com.parasoft.jscov.coverage.StaticCoverageParser;
 import com.parasoft.jscov.source.JavascriptSourcesReporterServiceFactory;
 import com.parasoft.jscov.i18n.CommonMessages;
 import com.parasoft.xtest.common.api.MessageSeverity;
 import com.parasoft.xtest.common.api.console.IConsole;
+import com.parasoft.xtest.common.api.progress.IProgressMonitor;
+import com.parasoft.xtest.coverage.all.api.ICoverageContext;
 import com.parasoft.xtest.coverage.all.api.ICoverageDataEngine;
 import com.parasoft.xtest.coverage.all.api.ICoverageOptions;
 import com.parasoft.xtest.results.api.IResultReporterService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.MockedStatic;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.List;
 import java.util.ResourceBundle;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -38,6 +48,41 @@ class JavascriptCoverageDataEngineTest {
             "JavaScript Coverage does not support the merge command yet.";
     private static final String FILTER_UNSUPPORTED_MESSAGE =
             "JavaScript Coverage does not support -include or -exclude yet.";
+
+    @Test
+    void getEngineInfo_receivesExpectedEngineInfo() {
+        var info = new JavascriptCoverageDataEngine().getEngineInfo();
+
+        assertEquals("jsc", info.getId());
+        assertEquals("JSC", info.getName());
+        assertEquals("Javascript Coverage", info.getDisplayName());
+        assertEquals("1.0.0", info.getVersion());
+    }
+
+    @Test
+    void scanApplication_wrapsParsedFilesInApplicationCoverageData(@TempDir Path applicationDirectory) {
+        ICoverageContext context = mock(ICoverageContext.class);
+        IProgressMonitor monitor = mock(IProgressMonitor.class);
+        File sourceFile = applicationDirectory.resolve("app.js").toFile();
+        FileCoverage fileCoverage = new FileCoverage(
+                sourceFile,
+                sourceFile.toURI().toString(),
+                List.of());
+
+        try (MockedStatic<StaticCoverageParser> parser = mockStatic(StaticCoverageParser.class)) {
+            parser.when(() -> StaticCoverageParser.parse(applicationDirectory, context, monitor))
+                    .thenReturn(List.of(fileCoverage));
+
+            var result = new JavascriptCoverageDataEngine().scanApplication(applicationDirectory, context, monitor);
+
+            assertInstanceOf(com.parasoft.jscov.coverage.ApplicationCoverageData.class, result);
+            var inputs = result.getAcceptedTestableInputs();
+            assertTrue(inputs.hasNext());
+            assertEquals(fileCoverage.getReferenceId(), result.getApplicationReferenceId(inputs.next()));
+            assertFalse(inputs.hasNext());
+            parser.verify(() -> StaticCoverageParser.parse(applicationDirectory, context, monitor));
+        }
+    }
 
     @Test
     void getCLICommandName_usesParasoftJarName() {
@@ -183,6 +228,31 @@ class JavascriptCoverageDataEngineTest {
 
         assertFalse(new JavascriptCoverageDataEngine().verifyOptions(options, console));
         verify(console).writeln(RUNTIME_UNSUPPORTED_MESSAGE, MessageSeverity.HIGH);
+    }
+
+    @Test
+    void telemetryConfiguration_returnsNull() {
+        assertNull(new JavascriptCoverageDataEngine().getTelemetryConfiguration());
+    }
+
+    @Test
+    void licenseDefinitionProvider_returnsNull() {
+        assertNull(new JavascriptCoverageDataEngine().getLicenseDefinitionProvider());
+    }
+
+    @Test
+    void scanRuntimeData_returnsNull() {
+        assertNull(new JavascriptCoverageDataEngine().scanRuntimeData(null, null, null));
+    }
+
+    @Test
+    void processRuntimeData_returnsNull() {
+        assertNull(new JavascriptCoverageDataEngine().processRuntimeData(null, null, null));
+    }
+
+    @Test
+    void testPath_returnsNull() {
+        assertNull(new JavascriptCoverageDataEngine().getTestPath(null, null));
     }
 
     private static ICoverageOptions optionsFor(ICoverageOptions.CoverageCommand command) {

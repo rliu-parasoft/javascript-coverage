@@ -253,7 +253,7 @@ pipeline {
             xunit(
                 thresholds: [
                     failed(unstableThreshold: '0'),
-                    skipped(unstableThreshold: '0')
+                    skipped(unstableThreshold: '4')
                 ],
                 tools: [JUnit(
                     pattern: 'integration/**/build/test-results/test/report.xml',

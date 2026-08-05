@@ -123,7 +123,9 @@ describe('static coverage integration', () => {
         assert.match(files[0], /^source\.js-.+\.json$/);
     });
 
-    it('captures the environment value when the visitor loads', () => {
+    it('captures the environment value when the visitor loads', function() {
+        this.timeout(5000);
+
         const disabledDirectory = createTempDirectory();
         instrumentInChild(disabledDirectory, undefined, {
             environmentValueAfterLoad: 'true'

@@ -6,6 +6,31 @@ pipeline {
         PR_FILE_PATH_RULES = 'jenkins/scripts/pr-path-rules.json'
     }
 
+    parameters {
+        string(
+            name: 'JTEST_HOME',
+            defaultValue: 'C:/Parasoft/jtest_2026.1.1'
+        )
+
+        string(
+            name: 'DTP_URL',
+            defaultValue: 'https://dtp.parasoftcn.com/',
+            description: 'DTP server URL'
+        )
+
+        string(
+            name: 'DTP_USER',
+            defaultValue: 'admin',
+            description: 'DTP username'
+        )
+
+        password(
+            name: 'DTP_PASSWORD',
+            defaultValue: 'tHBISrPrxc83P8Bp5reosw==',
+            description: 'DTP password'
+        )
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -21,6 +46,65 @@ pipeline {
                 ]) {
                     sh 'bash jenkins/scripts/analyze-pr-changes.sh'
                 }
+            }
+        }
+
+        stage('Load Execution Plan') {
+            steps {
+                script {
+                    def lines = readFile('artifacts/steps.csv').readLines().findAll { it.trim() }
+                    def headers = lines[0].replace('"', '').split(',')
+                    def values  = lines[1].split(',')
+                    headers.eachWithIndex { key, i ->
+                        env."${key}" = values[i]
+                        echo "${key}=${env."${key}"}"
+                    }
+                }
+            }
+        }
+
+        stage('Static Analysis (Java)') {
+            when {
+                expression { env.NEED_JAVA_SA == 'true' }
+            }
+            steps {
+                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                    sh 'bash jenkins/scripts/run-java-static-analysis.sh'
+                }
+                recordIssues(
+                    enabledForFailure: true,
+                    tools: [
+                        parasoftFindings(
+                            id: 'jtest-static-analysis',
+                            name: 'Jtest Static Analysis',
+                            pattern: 'artifacts/static/java/report/report.xml',
+                            localSettingsPath: 'jenkins/scripts/jtest.properties'
+                        )
+                    ],
+                    qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]]
+                )
+            }
+        }
+
+        stage('Static Analysis (JavaScript)') {
+            when {
+                expression { env.NEED_JS_SA == 'true' }
+            }
+            steps {
+                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                    sh 'bash jenkins/scripts/run-js-static-analysis.sh'
+                }
+                recordIssues(
+                    enabledForFailure: true,
+                    tools: [
+                        checkStyle(
+                            id: 'eslint-static-analysis',
+                            name: 'ESLint Static Analysis',
+                            pattern: 'artifacts/static/js/**/checkstyle.xml'
+                        )
+                    ],
+                    qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]]
+                )
             }
         }
     }
@@ -44,6 +128,9 @@ pipeline {
 
     post {
         always {
+            script {
+                env.PR_BUILD_RESULT = currentBuild.currentResult ?: 'SUCCESS'
+            }
             withCredentials([
                 usernamePassword(credentialsId: 'jscov-bitbucket-pr-bot', usernameVariable: 'API_USERNAME', passwordVariable: 'API_PASSWORD')
             ]) {

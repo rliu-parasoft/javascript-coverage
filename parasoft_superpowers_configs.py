@@ -50,7 +50,7 @@ RULE_SCOPE_ROUTING = {
         {
             "label": "JAVA_ONLY",
             "description": "Rule applies only to Java workflow.",
-            "target_file": "javascript-coverage/AGENTS.md",
+            "target_file": "javascript-coverage-cli/AGENTS.md",
         },
         {
             "label": "JAVASCRIPT_ONLY",

@@ -5,8 +5,11 @@
  * DTP_URL: String
  * DTP_USER: String
  * DTP_PASSWORD: Password
+ * DTP_PROJECT: String
+ * DTP_CONFIG: String
  * JTEST_HOME: String
  * PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR: String
+ * MLP_JAVA_HOME: String (optional; overrides JAVA_HOME only for MLP)
  * PUBLISH_REPORT_TO_DTP: Boolean
  * BranchToBuild: String
  * NOTIFY_RECIPIENTS: String
@@ -173,6 +176,18 @@ pipeline {
                     def dtpUser = params.DTP_USER
                     def dtpPassword = params.DTP_PASSWORD
                     def dtpProject = params.DTP_PROJECT
+                    def mlpJavaHome = (params.MLP_JAVA_HOME ?: '').trim()
+                    def mlpEnvironment = [
+                        "PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR=${params.PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR}",
+                        'sessionTag=JavascriptCoverage_parasoft-istanbul-lib-instrument'
+                    ]
+
+                    if (mlpJavaHome) {
+                        mlpEnvironment += [
+                            "JAVA_HOME=${mlpJavaHome}",
+                            "PATH+MLP_JAVA=${mlpJavaHome}\\bin"
+                        ]
+                    }
 
                     def settingsContent = [
                         "dtp.url=${dtpUrl}",
@@ -191,10 +206,7 @@ pipeline {
                     writeFile file: settingsFile, text: settingsContent
 
                     try {
-                        withEnv([
-                            "PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR=${params.PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR}",
-                            'sessionTag=JavascriptCoverage_parasoft-istanbul-lib-instrument'
-                        ]) {
+                        withEnv(mlpEnvironment) {
                             bat """\
                                 @echo on
 

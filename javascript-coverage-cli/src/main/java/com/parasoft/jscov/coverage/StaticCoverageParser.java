@@ -35,7 +35,7 @@ public final class StaticCoverageParser {
             IstanbulSourceFileCoverageDto istanbulSourceFileCoverageDto;
             try {
                 istanbulSourceFileCoverageDto = IstanbulJsonCoverageReader.read(jsonFile);
-            } catch (Throwable thr) {
+            } catch (Throwable thr) { // parasoft-suppress OWASP2021.A5.NCE "This is intentionally designed to prevent exceptions from bubbling up and causing the program to terminate."
                 String message = NLS.getFormatted(CommonMessages.FAILED_TO_PARSE_ISTANBUL_JSON, jsonFile);
                 console.writeln(message, MessageSeverity.HIGH);
                 JavascriptCoverageLogger.getLogger().error(message, thr);

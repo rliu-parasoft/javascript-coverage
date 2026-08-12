@@ -22,6 +22,7 @@ import java.util.*;
 public class JavascriptCoverageDataEngine implements ICoverageDataEngine
 {
     private static final INamedControllerInfo CONTROLLER_INFO = new ControllerInfo();
+    private static final Path STATIC_COVERAGE_DIRECTORY = Path.of(".parasoft", "static-coverage");
     private static final String IMPACTED_UNSUPPORTED_MESSAGE =
             "JavaScript Coverage does not support the impacted command yet.";
     private static final String MERGE_UNSUPPORTED_MESSAGE =
@@ -44,7 +45,7 @@ public class JavascriptCoverageDataEngine implements ICoverageDataEngine
         return new CommandLineArgument[]{
             new CommandLineArgument(
                 "-app",
-                "%JSCOV_STATIC_COVERAGE_JSON_DIR%",
+                "%JSCOV_PROJECT_ROOT%",
                 new ICoverageOptions.CoverageCommand[]{
                     ICoverageOptions.CoverageCommand.coverage,
                     ICoverageOptions.CoverageCommand.impacted
@@ -114,8 +115,13 @@ public class JavascriptCoverageDataEngine implements ICoverageDataEngine
 
         Path applicationDirectory = options.getApplicationUnderTest();
         if (applicationDirectory != null
-                && (applicationDirectory.toString().isEmpty() || !Files.isDirectory(applicationDirectory))) {
+                && (applicationDirectory.toString().isEmpty()
+                || !Files.isDirectory(applicationDirectory))) {
             return reject(console, CommonMessages.INVALID_APPLICATION_DIRECTORY_MESSAGE);
+        }
+        if (applicationDirectory != null
+                && !Files.isDirectory(getStaticCoverageDirectory(applicationDirectory))) {
+            return reject(console, CommonMessages.MISSING_STATIC_COVERAGE_DIRECTORY_MESSAGE);
         }
 
         // TODO: Add command-specific validation when JSCov supports additional CoverageRunner commands.
@@ -138,7 +144,9 @@ public class JavascriptCoverageDataEngine implements ICoverageDataEngine
     @Override
     public IApplicationCoverageData scanApplication(Path appToScan, ICoverageContext context, IProgressMonitor monitor)
     {
-        List<FileCoverage> staticInputs = StaticCoverageParser.parse(appToScan, context, monitor);
+        Objects.requireNonNull(appToScan, "appToScan must not null");
+        List<FileCoverage> staticInputs = StaticCoverageParser.parse(
+                getStaticCoverageDirectory(appToScan), context, monitor);
 
         return new ApplicationCoverageData(staticInputs);
     }
@@ -165,6 +173,11 @@ public class JavascriptCoverageDataEngine implements ICoverageDataEngine
     public String getCLICommandName()
     {
         return "java -jar parasoft-jscov.jar";
+    }
+
+    private static Path getStaticCoverageDirectory(Path projectRoot)
+    {
+        return projectRoot.resolve(STATIC_COVERAGE_DIRECTORY);
     }
 
 

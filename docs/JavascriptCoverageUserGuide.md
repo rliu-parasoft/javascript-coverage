@@ -230,7 +230,7 @@ The instrumentation package writes one JSON file per instrumented source file. W
 
 ### 6. Generate a coverage XML report with `parasoft-jscov.jar`
 
-The Java CLI consumes the directory containing the per-file static coverage JSON artifacts. The distributed CLI artifact is named `parasoft-jscov.jar`.
+The Java CLI consumes a project root and recursively reads per-file static coverage JSON artifacts from its `.parasoft/static-coverage` directory. The distributed CLI artifact is named `parasoft-jscov.jar`.
 
 #### 6.1 Usage
 
@@ -242,7 +242,7 @@ The Arguments are:
 
 | Arguments   | Requirement | Description                                                                                  |
 |-------------|-------------|----------------------------------------------------------------------------------------------|
-| `-app`      | Required    | The path to directory containing the static coverage JSON files.                             |
+| `-app`      | Required    | The path to the project root containing the `.parasoft/static-coverage` directory.           |
 | `-settings` | Optional    | The path to `settings.properties` file.                                                      |
 | `-report`   | Optional    | The path to directory where the generated static coverage XML report is written.             |
 | `-publish`  | Optional    | Uploads the generated reports to the DTP server. (Settings pattern: report.dtp.publish=true) |
@@ -251,9 +251,9 @@ The Arguments are:
 #### Examples
 
 ```powershell
-java -jar parasoft-jscov.jar -app ".parasoft/static-coverage" -settings "settings.properties" -report "reports/static_coverage"
+java -jar parasoft-jscov.jar -app "/demo/project" -settings "settings.properties" -report "reports/static_coverage"
 
-java -jar parasoft-jscov.jar coverage -app ".parasoft/static-coverage" -report "reports/static_coverage" -property "dtp.url=https://localhost:8443" -property "report.dtp.publish.src=full" -publish
+java -jar parasoft-jscov.jar coverage -app "/demo/project" -report "reports/static_coverage" -property "dtp.url=https://localhost:8443" -property "report.dtp.publish.src=full" -publish
 ```
 
 #### 6.2 Configure settings

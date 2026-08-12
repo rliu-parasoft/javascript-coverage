@@ -11,6 +11,7 @@ public final class CommonMessages extends NLS {
     public static String TESTMAP_UNSUPPORTED_MESSAGE;
     public static String COMPARE_UNSUPPORTED_MESSAGE;
     public static String INVALID_APPLICATION_DIRECTORY_MESSAGE;
+    public static String MISSING_STATIC_COVERAGE_DIRECTORY_MESSAGE;
     public static String APPLICATION_PARAMETER_DESCRIPTION;
     public static String NO_ISTANBUL_JSON_FILES_FOUND;
     public static String PARSING_ISTANBUL_JSON_FILE;

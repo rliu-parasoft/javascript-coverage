@@ -92,13 +92,16 @@ Add the Istanbul-compatible instrumentation plugin at the build integration poin
 
 #### 3.1 Babel
 
-Add `babel-plugin-istanbul` to the project's development dependencies, then add the `istanbul` plugin to the Babel configuration used by `babel-loader`, `@babel/cli`, Metro, or the relevant framework wrapper:
+Add `babel-plugin-istanbul` to the project's development dependencies, then add the `istanbul` plugin to the Babel configuration used by `babel-loader`, `@babel/cli`, Metro, or the relevant framework wrapper.
+
+The `include` and `exclude` options are provided by `babel-plugin-istanbul` itself and select which of the files processed by the Babel build get instrumented. If they are not set in the plugin options, `babel-plugin-istanbul` also reads `include` and `exclude` from the `nyc` configuration.
 
 ```javascript
 // babel.config.js
 module.exports = {
     plugins: [
         ['babel-plugin-istanbul', {
+            include: ['src/**/*.js', 'src/**/*.ts'],
             exclude: ['**/*.test.js', '**/*.test.ts']
         }]
     ],
@@ -108,7 +111,9 @@ module.exports = {
 
 #### 3.2 Vite
 
-Add `vite-plugin-istanbul` to the project's development dependencies, then add it to the Vite plugin pipeline. Enable build instrumentation for the artifact produced by Vite:
+Add `vite-plugin-istanbul` to the project's development dependencies, then add it to the Vite plugin pipeline. Enable build instrumentation for the artifact produced by Vite.
+
+The `include` and `exclude` options are provided by `vite-plugin-istanbul` itself and select which of the source files entering the Vite transform pipeline get instrumented. Use `extension` to cover file types beyond the plugin's defaults (for example `.ts`, `.vue`), and set `forceBuildInstrument: true` when instrumentation is required in Vite build mode.
 
 ```javascript
 // vite.config.js

@@ -99,9 +99,9 @@ tasks.register('distribution', Zip) {
         logger.lifecycle("Packaging integration modules: ${integrationDistByProject.keySet().collect { it.path }.join(', ')}")
     }
 
-    // docs/
-    from('docs') {
-        into('docs')
+    // manuals/
+    from('manuals') {
+        into('manuals')
     }
 
     // licenses/

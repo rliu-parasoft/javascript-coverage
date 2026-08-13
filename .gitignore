@@ -50,7 +50,10 @@ lombok.config
 
 # IDE
 /.vscode
-/.agents
+/.agents/*
+!/.agents/skills/
+/.agents/skills/*
+!/.agents/skills/regression-parasoft-istanbul-lib-instrument
 /.agent
 /.windsurf
 /.claude

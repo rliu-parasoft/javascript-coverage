@@ -33,7 +33,7 @@ public final class IstanbulJsonCoverageReader
         String prevalidatedJson = PathValidationUtil.canonicalize(json);
         List<Error> validationErrors = STATIC_COVERAGE_SCHEMA.validate(prevalidatedJson, InputFormat.JSON);
         if (!validationErrors.isEmpty()) {
-            String message = NLS.getFormatted(CommonMessages.INVALID_ISTANBUL_COVERAGE_JSON, jsonFilePath, validationErrors);
+            String message = NLS.getFormatted(CommonMessages.INVALID_STATIC_COVERAGE_JSON, jsonFilePath, validationErrors);
             throw new IOException(message);
         }
 

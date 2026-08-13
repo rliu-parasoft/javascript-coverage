@@ -4,6 +4,7 @@ const { assert } = require('chai');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { version: packageVersion } = require('../package.json');
 
 describe('static-coverage', () => {
     let writeStaticCoverage;
@@ -85,12 +86,30 @@ describe('static-coverage', () => {
             assert.match(files[0], /^myfile\.js-.+\.json$/, 'File should match pattern');
 
             const writtenData = JSON.parse(fs.readFileSync(path.join(outputDir, files[0]), 'utf8'));
+            assert.notProperty(writtenData, 'version', 'Static coverage JSON should not include session metadata');
             assert.deepEqual(writtenData.project, projectInfo, 'Project info should be included');
             assert.equal(writtenData.path, filePath, 'File path should match');
             assert.deepEqual(writtenData.statementMap, coverageData.statementMap, 'Statement map should match');
             assert.deepEqual(writtenData.s, coverageData.s, 'Statement coverage counts should match');
             assert.deepEqual(writtenData.fnMap, coverageData.fnMap, 'Function map should match');
             assert.deepEqual(writtenData.branchMap, coverageData.branchMap, 'Branch map should match');
+        });
+
+        it('should write a session version manifest', () => {
+            const coverageData = createBasicCoverageData('/test/version-manifest.js');
+            const projectInfo = { name: 'test-project', root: '/test' };
+
+            writeStaticCoverage('/test/version-manifest.js', coverageData, projectInfo);
+
+            const outputDir = getOutputDir();
+            trackCreatedFiles(outputDir);
+            const manifestPath = path.join(outputDir, 'version.json');
+
+            assert.isTrue(fs.existsSync(manifestPath), 'Session version manifest should be created');
+            assert.deepEqual(JSON.parse(fs.readFileSync(manifestPath, 'utf8')), {
+                schemaVersion: '1.0',
+                toolVersion: packageVersion
+            });
         });
 
         it('should use basename for output filename', () => {
@@ -195,7 +214,8 @@ describe('static-coverage', () => {
                 f.includes('real-bundle.js')
             );
 
-            assert.equal(allFiles.length, 4, 'Should create files for source map sources');
+            const coverageFiles = allFiles.filter(file => file !== 'version.json');
+            assert.equal(coverageFiles.length, 4, 'Should create files for source map sources');
 
             // Verify created files contain correct project info
             relevantFiles.forEach(file => {

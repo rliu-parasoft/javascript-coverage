@@ -347,7 +347,7 @@ class IstanbulJsonCoverageReaderTest {
                 () -> IstanbulJsonCoverageReader.read(jsonFile));
 
         assertTrue(exception.getMessage().startsWith(
-                NLS.getFormatted(CommonMessages.INVALID_ISTANBUL_COVERAGE_JSON, jsonFile, "").trim()));
+                NLS.getFormatted(CommonMessages.INVALID_STATIC_COVERAGE_JSON, jsonFile, "").trim()));
     }
 
     private static void assertPosition(PositionDto pos, Integer expectedLine, Integer expectedColumn) {

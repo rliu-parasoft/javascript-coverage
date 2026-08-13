@@ -227,15 +227,16 @@ When `PARASOFT_STATIC_COVERAGE_ENABLE=true`, the instrumentation package writes 
 .parasoft/
 └── static-coverage/
     └── <process-id>/
+        ├── version.json
         ├── <file-name>-<uuid>.json
         └── ...
 ```
 
-The instrumentation package writes one JSON file per instrumented source file. When source-map data is available, coverage locations are remapped to the original source files.
+The instrumentation package writes one JSON file per instrumented source file. When source-map data is available, coverage locations are remapped to the original source files. It also writes `version.json` once per PID session directory. The manifest contains the static-coverage schema version and instrumentation package version.
 
 ### 6. Generate a coverage XML report with `parasoft-jscov.jar`
 
-The Java CLI consumes a project root and recursively reads per-file static coverage JSON artifacts from its `.parasoft/static-coverage` directory. The distributed CLI artifact is named `parasoft-jscov.jar`.
+The Java CLI consumes a project root and reads `version.json` before recursively reading per-file static coverage JSON artifacts from its `.parasoft/static-coverage` directory. The distributed CLI artifact is named `parasoft-jscov.jar`.
 
 #### 6.1 Usage
 

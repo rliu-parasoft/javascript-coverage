@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { name } = require('../package.json');
+const { name, version: toolVersion } = require('../package.json');
 const { v5: uuidv5 } = require('uuid');
 const { TraceMap } = require('@jridgewell/trace-mapping');
 const { SourceMapTransformer } = require('istanbul-lib-source-maps/lib/transformer');
@@ -9,8 +9,10 @@ const libCoverage = require('istanbul-lib-coverage');
 const debug = require('debug')(name);
 
 let outputDir;
+const SCHEMA_VERSION = '1.0';
+const VERSION_FILE_NAME = 'version.json';
 
-function ensureOutputDir() {
+function ensureOutputDirAndCreateVersionFile() {
     if (!outputDir) {
         outputDir = path.join(
             process.cwd(),
@@ -18,7 +20,16 @@ function ensureOutputDir() {
             'static-coverage',
             String(process.pid)
         );
-        fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    fs.mkdirSync(outputDir, { recursive: true });
+
+    const versionFilePath = path.join(outputDir, VERSION_FILE_NAME);
+    if (!fs.existsSync(versionFilePath)) {
+        fs.writeFileSync(versionFilePath, JSON.stringify({
+            schemaVersion: SCHEMA_VERSION,
+            toolVersion
+        }));
     }
 }
 
@@ -54,7 +65,7 @@ function remapCoverageData(coverageData) {
 }
 
 function writeStaticCoverage(sourceFilePath, coverageData, projectInfo) {
-    ensureOutputDir();
+    ensureOutputDirAndCreateVersionFile();
 
     const mappedCoverageList = remapCoverageData(coverageData);
 

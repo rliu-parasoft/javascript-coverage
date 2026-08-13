@@ -11,10 +11,12 @@ import com.parasoft.xtest.coverage.all.api.IApplicationCoverageData;
 import com.parasoft.xtest.coverage.api.results.IDynamicCoverageInfo;
 import com.parasoft.xtest.coverage.api.results.ILineCoverageInfoBuilder;
 import com.parasoft.xtest.coverage.api.results.IStaticCoverageInfo;
+import com.parasoft.xtest.logging.api.ParasoftLogger;
 
 import java.util.*;
 
 public final class ApplicationCoverageData implements IApplicationCoverageData {
+    private static final ParasoftLogger logger = JavascriptCoverageLogger.getLogger();
     private final List<ITestableInput> acceptedInputs = new ArrayList<>();
     private final Map<String, FileCoverage> indexByReferenceId = new HashMap<>();
 
@@ -24,7 +26,7 @@ public final class ApplicationCoverageData implements IApplicationCoverageData {
             try {
                 input = LocationUtil.createTestableInput(fileCoverage.getLocationProperties());
             } catch (LocationsException e) {
-                JavascriptCoverageLogger.getLogger().warn(NLS.getFormatted(CommonMessages.FAILED_TO_CREATE_ITESTABLEINPUT_FROM_PROPERTIES, fileCoverage.getReferenceId()));
+                logger.warn(NLS.getFormatted(CommonMessages.FAILED_TO_CREATE_ITESTABLEINPUT_FROM_PROPERTIES, fileCoverage.getReferenceId()));
                 continue;
             }
             acceptedInputs.add(input);

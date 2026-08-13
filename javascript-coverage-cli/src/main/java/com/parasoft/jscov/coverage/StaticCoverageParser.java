@@ -1,5 +1,6 @@
 package com.parasoft.jscov.coverage;
 
+import com.parasoft.jscov.JavascriptCoverageDataEngine;
 import com.parasoft.jscov.JavascriptCoverageLogger;
 import com.parasoft.jscov.coverage.istanbul.IstanbulFunctionLineMapper;
 import com.parasoft.jscov.coverage.istanbul.IstanbulJsonCoverageReader;
@@ -11,6 +12,7 @@ import com.parasoft.xtest.common.api.console.IConsole;
 import com.parasoft.xtest.common.api.progress.IProgressMonitor;
 import com.parasoft.xtest.common.nls.NLS;
 import com.parasoft.xtest.coverage.all.api.ICoverageContext;
+import com.parasoft.xtest.logging.api.ParasoftLogger;
 
 import java.io.File;
 import java.io.IOException;
@@ -21,82 +23,176 @@ import java.util.stream.Collectors;
 
 public final class StaticCoverageParser {
 
+    private static final ParasoftLogger logger = JavascriptCoverageLogger.getLogger();
+
     public static List<FileCoverage> parse(Path appToScan, ICoverageContext context, IProgressMonitor monitor) {
         IConsole console = context.getConsole();
-        List<FileCoverage> paredFileCoverages = new ArrayList<>();
-        List<Path> jsonPaths = listJsonFiles(appToScan, console);
-        if (jsonPaths.isEmpty()) {
-            String message = NLS.getFormatted(CommonMessages.NO_ISTANBUL_JSON_FILES_FOUND, appToScan.toAbsolutePath().toString());
+        List<FileCoverage> parsedFileCoverages = new ArrayList<>();
+        Map<StaticCoverageSchemaVersion, List<Path>> jsonFilesBySchemaVersion = listJsonFiles(appToScan, console);
+        if (jsonFilesBySchemaVersion.isEmpty()) {
+            String message = NLS.getFormatted(CommonMessages.NO_STATIC_COVERAGE_JSON_FILES_FOUND, appToScan.toAbsolutePath().toString());
             console.writeln(message, MessageSeverity.HIGH);
             throw new IllegalArgumentException(message);
         }
-        for (Path jsonFile : jsonPaths) {
-            JavascriptCoverageLogger.getLogger().debug(NLS.getFormatted(CommonMessages.PARSING_ISTANBUL_JSON_FILE, jsonFile));
-            IstanbulSourceFileCoverageDto istanbulSourceFileCoverageDto;
-            try {
-                istanbulSourceFileCoverageDto = IstanbulJsonCoverageReader.read(jsonFile);
-            } catch (Throwable thr) { // parasoft-suppress OWASP2021.A5.NCE "This is intentionally designed to prevent exceptions from bubbling up and causing the program to terminate."
-                String message = NLS.getFormatted(CommonMessages.FAILED_TO_PARSE_ISTANBUL_JSON, jsonFile);
-                console.writeln(message, MessageSeverity.HIGH);
-                JavascriptCoverageLogger.getLogger().error(message, thr);
-                continue;
+        for (Map.Entry<StaticCoverageSchemaVersion, List<Path>> entry : jsonFilesBySchemaVersion.entrySet()) {
+            StaticCoverageSchemaVersion schemaVersion = entry.getKey();
+            for (Path jsonFile : entry.getValue()) {
+                logger.debug(NLS.getFormatted(CommonMessages.PARSING_STATIC_COVERAGE_JSON_FILE, jsonFile));
+                IstanbulSourceFileCoverageDto istanbulSourceFileCoverageDto;
+                try {
+                    istanbulSourceFileCoverageDto = readCoverageJson(schemaVersion, jsonFile);
+                } catch (Throwable thr) { // parasoft-suppress OWASP2021.A5.NCE "This is intentionally designed to prevent exceptions from bubbling up and causing the program to terminate."
+                    String message = NLS.getFormatted(CommonMessages.FAILED_TO_PARSE_STATIC_COVERAGE_JSON, jsonFile);
+                    console.writeln(message, MessageSeverity.HIGH);
+                    logger.error(message, thr);
+                    continue;
+                }
+                List<FunctionLineCoverageDto> lineMapByPath = IstanbulFunctionLineMapper.map(istanbulSourceFileCoverageDto);
+
+                File sourceFile = new File(istanbulSourceFileCoverageDto.getPath());
+
+                List<CoverableItemNode> functionItems = lineMapByPath.stream()
+                        .map(StaticCoverageParser::toCoverableItem)
+                        .collect(Collectors.toList());
+
+                String fileName = sourceFile.getName();
+                String fileDisplayName = stripExtension(fileName);
+                CoverableItemNode fileItem = new CoverableItemNode(
+                        fileDisplayName,
+                        fileName,
+                        Collections.emptyList(),
+                        functionItems);
+
+                FileCoverage parsedFileCoverage = new FileCoverage(
+                        sourceFile,
+                        sourceFile.toURI().toString(),
+                        List.of(fileItem));
+                addProjectAttributes(parsedFileCoverage, istanbulSourceFileCoverageDto);
+                parsedFileCoverages.add(parsedFileCoverage);
             }
-            List<FunctionLineCoverageDto> lineMapByPath = IstanbulFunctionLineMapper.map(istanbulSourceFileCoverageDto);
-
-            File sourceFile = new File(istanbulSourceFileCoverageDto.getPath());
-
-            List<CoverableItemNode> functionItems = lineMapByPath.stream()
-                    .map(StaticCoverageParser::toCoverableItem)
-                    .collect(Collectors.toList());
-
-            String fileName = sourceFile.getName();
-            String fileDisplayName = stripExtension(fileName);
-            CoverableItemNode fileItem = new CoverableItemNode(
-                    fileDisplayName,
-                    fileName,
-                    Collections.emptyList(),
-                    functionItems);
-
-            FileCoverage parsedFileCoverage = new FileCoverage(
-                    sourceFile,
-                    sourceFile.toURI().toString(),
-                    List.of(fileItem));
-            addProjectAttributes(parsedFileCoverage, istanbulSourceFileCoverageDto);
-            paredFileCoverages.add(parsedFileCoverage);
         }
-        if (paredFileCoverages.isEmpty()) {
-            String message = NLS.getFormatted(CommonMessages.NO_VALID_ISTANBUL_JSON_FILES_FOUND_IN_DIRECTORY, appToScan.toAbsolutePath().toString());
+        if (parsedFileCoverages.isEmpty()) {
+            String message = NLS.getFormatted(CommonMessages.NO_VALID_STATIC_COVERAGE_JSON_FILES_FOUND_IN_DIRECTORY, appToScan.toAbsolutePath().toString());
             console.writeln(message, MessageSeverity.HIGH);
             throw new IllegalArgumentException(message);
         }
-        return paredFileCoverages;
+        return parsedFileCoverages;
     }
 
-    private static List<Path> listJsonFiles(Path appToScan, IConsole console) {
-        List<Path> allJsonFiles;
-        try (var jsonFiles = Files.walk(appToScan)) {
-            allJsonFiles = jsonFiles
-                    .filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().endsWith(".json"))
-                    .sorted()
-                    .toList();
+    private static Map<StaticCoverageSchemaVersion, List<Path>> listJsonFiles(Path appToScan, IConsole console) {
+        Map<StaticCoverageSchemaVersion, List<Path>> jsonFilesBySchemaVersion = new EnumMap<>(StaticCoverageSchemaVersion.class);
+        Map<String, SelectedStaticCoverageFile> preferredFilesByName = new HashMap<>();
+
+        try {
+            for (Path sessionDirectory : resolveSessionDirectories(appToScan)) {
+                StaticCoverageSchemaVersion schemaVersion;
+                try {
+                    schemaVersion = StaticCoverageVersionManifestReader.read(sessionDirectory);
+                } catch (IOException e) {
+                    logger.debug(NLS.getFormatted(CommonMessages.SKIPPED_STATIC_COVERAGE_SESSION,
+                            sessionDirectory, e.getMessage()));
+                    continue;
+                }
+
+                try (var jsonFiles = Files.list(sessionDirectory)) {
+                    List<Path> sessionJsonFiles = jsonFiles
+                            .filter(Files::isRegularFile)
+                            .filter(StaticCoverageParser::isCoverageJsonFile)
+                            .sorted()
+                            .toList();
+                    for (Path jsonFile : sessionJsonFiles) {
+                        addJsonFilePath(jsonFilesBySchemaVersion, preferredFilesByName, schemaVersion, jsonFile);
+                    }
+                }
+            }
         } catch (IOException e) {
-            String message = NLS.getFormatted(CommonMessages.FAILED_TO_LIST_ISTANBUL_JSON_FILES, appToScan);
+            String message = NLS.getFormatted(CommonMessages.FAILED_TO_LIST_STATIC_COVERAGE_JSON_FILES, appToScan);
             console.writeln(message, MessageSeverity.HIGH);
             throw new IllegalArgumentException(message, e);
         }
-        Map<String, List<Path>> byFileName = allJsonFiles.stream()
-                .collect(Collectors.groupingBy(path -> path.getFileName().toString()));
-        byFileName.forEach((name, paths) -> {
-            if (paths.size() > 1) {
-                String message = NLS.getFormatted(CommonMessages.SKIPPING_DUPLICATE_JSON_FILES ,name, paths.subList(1, paths.size()));
-                JavascriptCoverageLogger.getLogger().debug(message);
-            }
-        });
-        return byFileName.values().stream()
-                .map(paths -> paths.get(0))
-                .sorted()
-                .toList();
+        return jsonFilesBySchemaVersion;
+    }
+
+    private static List<Path> resolveSessionDirectories(Path appToScan) throws IOException {
+        if (Files.exists(appToScan.resolve("version.json")) || hasDirectCoverageJsonFile(appToScan)) {
+            return List.of(appToScan);
+        }
+        try (var paths = Files.list(appToScan)) {
+            return paths
+                    .filter(Files::isDirectory)
+                    .sorted()
+                    .toList();
+        }
+    }
+
+    private static boolean hasDirectCoverageJsonFile(Path directory) throws IOException {
+        try (var paths = Files.list(directory)) {
+            return paths
+                    .filter(Files::isRegularFile)
+                    .anyMatch(StaticCoverageParser::isCoverageJsonFile);
+        }
+    }
+
+    private static boolean isCoverageJsonFile(Path path) {
+        return path.getFileName().toString().endsWith(".json")
+                && !path.getFileName().toString().equals("version.json");
+    }
+
+    private static void addJsonFilePath(
+            Map<StaticCoverageSchemaVersion, List<Path>> jsonFilesBySchemaVersion,
+            Map<String, SelectedStaticCoverageFile> preferredFilesByName,
+            StaticCoverageSchemaVersion schemaVersion,
+            Path jsonFile) {
+        SelectedStaticCoverageFile selected = preferredFilesByName.get(jsonFile.getFileName().toString());
+        if (selected == null) {
+            addSelectedFile(jsonFilesBySchemaVersion, preferredFilesByName, schemaVersion, jsonFile);
+            return;
+        }
+        if (selected.schemaVersion().getPriority() > schemaVersion.getPriority()) {
+            logger.debug(NLS.getFormatted(
+                    CommonMessages.SKIPPED_LOWER_STATIC_COVERAGE_SCHEMA_VERSION,
+                    toLogPath(jsonFile), schemaVersion.getValue(), toLogPath(selected.path()),
+                    selected.schemaVersion().getValue()));
+            return;
+        }
+        if (selected.schemaVersion() == schemaVersion) {
+            logger.debug(NLS.getFormatted(CommonMessages.SKIPPED_DUPLICATE_JSON_FILES,
+                    jsonFile.getFileName(), toLogPath(jsonFile)));
+            return;
+        }
+        jsonFilesBySchemaVersion.get(selected.schemaVersion()).remove(selected.path());
+        logger.debug(NLS.getFormatted(
+                CommonMessages.REPLACED_LOWER_STATIC_COVERAGE_SCHEMA_VERSION,
+                toLogPath(selected.path()), selected.schemaVersion().getValue(), toLogPath(jsonFile),
+                schemaVersion.getValue()));
+        addSelectedFile(jsonFilesBySchemaVersion, preferredFilesByName, schemaVersion, jsonFile);
+    }
+
+    private static String toLogPath(Path coverageFile) {
+        String pathStr = coverageFile.normalize().toString().replace('\\', '/');
+        int index = pathStr.indexOf(JavascriptCoverageDataEngine.STATIC_COVERAGE_DIRECTORY.toString().replace('\\', '/'));
+        if (index >= 0) {
+            return pathStr.substring(index);
+        }
+        return pathStr;
+    }
+
+    private static void addSelectedFile(
+            Map<StaticCoverageSchemaVersion, List<Path>> jsonFilesBySchemaVersion,
+            Map<String, SelectedStaticCoverageFile> preferredFilesByName,
+            StaticCoverageSchemaVersion schemaVersion,
+            Path jsonFile) {
+        jsonFilesBySchemaVersion.computeIfAbsent(schemaVersion, ignored -> new ArrayList<>()).add(jsonFile);
+        preferredFilesByName.put(jsonFile.getFileName().toString(), new SelectedStaticCoverageFile(schemaVersion, jsonFile));
+    }
+
+    private record SelectedStaticCoverageFile(StaticCoverageSchemaVersion schemaVersion, Path path) { }
+
+    private static IstanbulSourceFileCoverageDto readCoverageJson(
+            StaticCoverageSchemaVersion schemaVersion, Path jsonFile) throws IOException {
+        return switch (schemaVersion) {
+            case V1_0 -> IstanbulJsonCoverageReader.read(jsonFile);
+        };
     }
 
     private static void addProjectAttributes(FileCoverage fileCoverage, IstanbulSourceFileCoverageDto fileCoverageDto) {

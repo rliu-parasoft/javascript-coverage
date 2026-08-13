@@ -22,7 +22,7 @@ import java.util.*;
 public class JavascriptCoverageDataEngine implements ICoverageDataEngine
 {
     private static final INamedControllerInfo CONTROLLER_INFO = new ControllerInfo();
-    private static final Path STATIC_COVERAGE_DIRECTORY = Path.of(".parasoft", "static-coverage");
+    public static final Path STATIC_COVERAGE_DIRECTORY = Path.of(".parasoft", "static-coverage");
     private static final String IMPACTED_UNSUPPORTED_MESSAGE =
             "JavaScript Coverage does not support the impacted command yet.";
     private static final String MERGE_UNSUPPORTED_MESSAGE =

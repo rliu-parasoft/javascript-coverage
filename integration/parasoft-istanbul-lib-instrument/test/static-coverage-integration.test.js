@@ -119,8 +119,10 @@ describe('static coverage integration', () => {
             processDirectories[0]
         );
         const files = fs.readdirSync(outputDirectory);
-        assert.lengthOf(files, 1);
-        assert.match(files[0], /^source\.js-.+\.json$/);
+        assert.include(files, 'version.json');
+        const coverageFiles = files.filter(file => file !== 'version.json');
+        assert.lengthOf(coverageFiles, 1);
+        assert.match(coverageFiles[0], /^source\.js-.+\.json$/);
     });
 
     it('captures the environment value when the visitor loads', function() {
@@ -163,7 +165,9 @@ describe('static coverage integration', () => {
             processDirectories[0]
         );
         const files = fs.readdirSync(outputDirectory);
-        assert.lengthOf(files, 1);
-        assert.match(files[0], /^source\.js-.+\.json$/);
+        assert.include(files, 'version.json');
+        const coverageFiles = files.filter(file => file !== 'version.json');
+        assert.lengthOf(coverageFiles, 1);
+        assert.match(coverageFiles[0], /^source\.js-.+\.json$/);
     });
 });

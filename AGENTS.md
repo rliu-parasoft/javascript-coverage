@@ -9,9 +9,14 @@
 
 - Run Gradle tasks through the repository-root Gradle wrapper.
 
+## Repository Knowledge
+
+- When a task may need repository structural facts or domain details, read `ARCHITECTURE.md` first. It is the lightweight entry point that routes current behavior to `docs/domain/` and accepted future direction to `docs/design/`; from there, conditionally load only the specific documents the task needs.
+
 ## Audit
 
 - For routed work, append the `AGENTS.index.md` and scoped `AGENTS.md` files read, with their applicable scopes, to the end of the final response.
+- For routed work, append each read `ARCHITECTURE.md` or Markdown file under `docs/domain/` or `docs/design/`, with the reason it was read, to the end of the final response.
 
 ## Cross-Project Engineering Rules
 

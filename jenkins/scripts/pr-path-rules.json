@@ -9,12 +9,14 @@
     },
     "js_src": {
       "glob": [
-        "integration/**/src/**.js"
+        "integration/**/src/**.js",
+        "integration/**/src/**.ts"
       ]
     },
     "js_sa": {
       "glob": [
-        "integration/**/eslint.config.cjs"
+        "integration/**/eslint.config.cjs",
+        "integration/**/eslint.config.js"
       ]
     },
     "js_config": {

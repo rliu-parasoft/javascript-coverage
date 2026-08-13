@@ -3,4 +3,5 @@ rootProject.name = 'javascript-coverage'
 include 'javascript-coverage-cli'
 include 'integration'
 include 'integration:parasoft-istanbul-lib-instrument'
+include 'integration:jscov-agent'
 

@@ -1,0 +1,69 @@
+import com.github.gradle.node.npm.task.NpmTask
+
+plugins {
+    id 'com.github.node-gradle.node' version '7.0.2'
+}
+
+def integrationDistDir = layout.buildDirectory.dir('integrationDist')
+
+tasks.register('npmClean', NpmTask) {
+    group = 'build'
+    description = 'Cleans the JSCOV agent build artifacts.'
+
+    dependsOn(tasks.named('npmInstall'))
+    workingDir.set(projectDir)
+    args = ['run', 'clean']
+}
+
+tasks.named('clean') {
+    dependsOn(tasks.named('npmClean'))
+}
+
+tasks.register('npmBuild', NpmTask) {
+    group = 'build'
+    description = 'Builds the JSCOV agent runtime files.'
+
+    dependsOn(tasks.named('npmInstall'))
+    workingDir.set(projectDir)
+    args = ['run', 'build']
+    outputs.dir(layout.projectDirectory.dir('dist'))
+}
+
+tasks.register('assembleIntegrationDist', Copy) {
+    group = 'build'
+    description = 'Assembles distribution artifacts for root packaging.'
+
+    dependsOn(tasks.named('npmBuild'))
+    from('dist/agent.js')
+    from('resources/agent.jsonc')
+    into(integrationDistDir)
+}
+
+tasks.register('test', NpmTask) {
+    group = 'verification'
+    description = 'Runs the JSCOV agent npm test suite.'
+
+    dependsOn(tasks.named('npmBuild'))
+    workingDir.set(projectDir)
+    args = ['test']
+}
+
+tasks.named('test', NpmTask).configure {
+    // Override integration/build.gradle's configureEach rule after this task is registered.
+    ignoreExitValue.set(false)
+}
+
+tasks.register('lintReport', NpmTask) {
+    group = 'verification'
+    description = 'Runs ESLint and writes a Checkstyle XML report for Jenkins Warnings NG.'
+
+    dependsOn(tasks.named('npmInstall'))
+    workingDir.set(projectDir)
+    args = ['run', 'lint:report']
+}
+
+artifacts {
+    integrationDistElements(integrationDistDir) {
+        builtBy(tasks.named('assembleIntegrationDist'))
+    }
+}

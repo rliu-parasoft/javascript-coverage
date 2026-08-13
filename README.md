@@ -11,7 +11,7 @@ Gradle multi-module project that builds a single distribution zip containing:
 Prerequisites:
 - JDK 21 must be available as a local Gradle toolchain (this project uses `java.toolchain.languageVersion = 21`).
   - If you don't have JDK 21 installed, `:javascript-coverage-cli:compileJava` will fail with "Cannot find a Java installation ... languageVersion=21".
-- Node is not required for the current skeleton build (integration modules are placeholders), but future integration modules may require it.
+- Node 24.11.1 is provisioned by the Gradle Node plugin for integration builds and tests. A local Node installation is only required when running npm commands directly.
 
 Build the distribution artifact:
 ```powershell
@@ -43,6 +43,15 @@ Note:
 - `:integration:parasoft-istanbul-lib-instrument`
   - Fork of `istanbul-lib-instrument` 6.0.3-1 packaged under the `parasoft-istanbul-lib-instrument-6.0.3-1.tgz` artifact name.
   - Produces an npm-compatible tarball with a top-level `package/` directory and the Parasoft package name/version inside `package.json`, while still supporting npm `overrides`.
+
+- `:integration:jscov-agent`
+  - Builds the JSCOV agent runtime files with `npm run build` from `integration/jscov-agent`.
+  - The generated runtime is invoked with the Jira command:
+    ```powershell
+    node --import .\agent.js uta-server.js
+    ```
+  - On Windows, an absolute agent path must use a `file:///` URL, for example `node --import file:///E:/path/to/agent.js uta-server.js`; a bare `E:\path\agent.js` is not valid for `--import`.
+  - The agent defaults to port 8050. `GET /health` is temporary support for manual testing only.
 
 ## Distribution Contents
 

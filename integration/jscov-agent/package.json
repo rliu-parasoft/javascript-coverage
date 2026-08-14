@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "clean": "rimraf dist reports node_modules/.cache",
-    "test": "vitest run --no-file-parallelism --reporter=default --reporter=junit --outputFile.junit=build/test-results/test/report.xml --coverage.enabled --coverage.provider=istanbul --coverage.reporter=clover --coverage.reporter=html --coverage.reportsDirectory=build/reports/coverage",
+    "test": "vitest run --no-file-parallelism --reporter=default --reporter=junit --outputFile.junit=build/test-results/test/report.xml --coverage.enabled --coverage.provider=istanbul --coverage.reporter=clover --coverage.reporter=html --coverage.reportsDirectory=build/reports/coverage && node scripts/normalize-junit-times.mjs build/test-results/test/report.xml",
     "test:run": "vitest run",
     "lint": "eslint src",
     "lint:report": "eslint src --format eslint-formatter-checkstyle --output-file build/reports/eslint/checkstyle.xml"

@@ -168,18 +168,30 @@ pipeline {
             }
         }
         
-        stage('Publish ESLint To DTP (MLP) - parasoft-istanbul-lib-instrument') {
+        stage('Publish ESLint To DTP (MLP)') {
             steps {
                 script {
-                    def settingsFile = "mlp.properties"
                     def dtpUrl = params.DTP_URL
                     def dtpUser = params.DTP_USER
                     def dtpPassword = params.DTP_PASSWORD
                     def dtpProject = params.DTP_PROJECT
                     def mlpJavaHome = (params.MLP_JAVA_HOME ?: '').trim()
                     def mlpEnvironment = [
-                        "PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR=${params.PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR}",
-                        'sessionTag=JavascriptCoverage_parasoft-istanbul-lib-instrument'
+                        "PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR=${params.PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR}"
+                    ]
+                    def reports = [
+                        [
+                            settingsFile: 'mlp-parasoft-istanbul-lib-instrument.properties',
+                            sessionTag: 'JavascriptCoverage_parasoft-istanbul-lib-instrument',
+                            resultsFile: 'integration\\parasoft-istanbul-lib-instrument\\build\\reports\\eslint\\checkstyle.xml',
+                            sourceDir: 'integration\\parasoft-istanbul-lib-instrument\\src'
+                        ],
+                        [
+                            settingsFile: 'mlp-jscov-agent.properties',
+                            sessionTag: 'JavascriptCoverageAgent',
+                            resultsFile: 'integration\\jscov-agent\\build\\reports\\eslint\\checkstyle.xml',
+                            sourceDir: 'integration\\jscov-agent\\src'
+                        ]
                     ]
 
                     if (mlpJavaHome) {
@@ -189,39 +201,40 @@ pipeline {
                         ]
                     }
 
-                    def settingsContent = [
-                        "dtp.url=${dtpUrl}",
-                        "dtp.user=${dtpUser}",
-                        "dtp.password=${dtpPassword}",
-                        'dtp.project=${dtpProject}',
-                        'session.tag=${sessionTag}',
-                        'license.release.on.exit=true',
-                        'console.verbosity.level=high',
-                        'logging.verbose=true',
-                        'logging.scontrol.verbose=true',
-                        'scope.path.accept.wildcard=*.ts,*.tsx,*.js',
-                        'parasoft.eula.accepted=true'
-                    ].join('\n') + '\n'
+                    withEnv(mlpEnvironment) {
+                        reports.each { report ->
+                            def settingsContent = [
+                                "dtp.url=${dtpUrl}",
+                                "dtp.user=${dtpUser}",
+                                "dtp.password=${dtpPassword}",
+                                "dtp.project=${dtpProject}",
+                                "session.tag=${report.sessionTag}",
+                                'license.release.on.exit=true',
+                                'console.verbosity.level=high',
+                                'logging.verbose=true',
+                                'logging.scontrol.verbose=true',
+                                'scope.path.accept.wildcard=*.ts,*.tsx,*.js',
+                                'parasoft.eula.accepted=true'
+                            ].join('\n') + '\n'
 
-                    writeFile file: settingsFile, text: settingsContent
+                            writeFile file: report.settingsFile, text: settingsContent
 
-                    try {
-                        withEnv(mlpEnvironment) {
-                            bat """\
-                                @echo on
+                            try {
+                                bat """\
+                                    @echo on
 
-                                "%PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR%\\multilanguage-pack.bat" -tool ESLint -results.file "integration\\parasoft-istanbul-lib-instrument\\build\\reports\\eslint\\checkstyle.xml" -source.dir "integration\\parasoft-istanbul-lib-instrument\\src" -settings "${settingsFile}"
-                                """.stripIndent()
-                        }
-                    } finally {
-                        if (fileExists(settingsFile)) {
-                            bat "del /f /q \"${settingsFile}\""
+                                    "%PARASOFT_MULTILANGUAGE_PACK_INSTALL_DIR%\\multilanguage-pack.bat" -tool ESLint -results.file "${report.resultsFile}" -source.dir "${report.sourceDir}" -settings "${report.settingsFile}"
+                                    """.stripIndent()
+                            } finally {
+                                if (fileExists(report.settingsFile)) {
+                                    bat "del /f /q \"${report.settingsFile}\""
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-
         stage('Unit Tests (JS)') {
             steps {
                 sh '''\

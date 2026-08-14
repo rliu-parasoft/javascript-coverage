@@ -70,6 +70,7 @@ class StaticCoverageParserTest {
     void parse_returnsFileCoverageForEachJson(@TempDir Path appDir) throws IOException {
         Path jsonA = Files.createFile(appDir.resolve("a.json"));
         Path jsonB = Files.createFile(appDir.resolve("b.json"));
+        writeManifest(appDir, "1.0");
 
         IstanbulSourceFileCoverageDto dtoA = sourceDto("/proj/root/src/a.js", project("demo", "/proj/root"));
         IstanbulSourceFileCoverageDto dtoB = sourceDto("/proj/root/src/b.js", project("demo", "/proj/root"));
@@ -118,8 +119,9 @@ class StaticCoverageParserTest {
     @Test
     void parse_whenInputIsSessionDirectory_doesNotParseVersionManifestAsCoverage(@TempDir Path sessionDir)
             throws IOException {
-        Path manifest = Files.createFile(sessionDir.resolve("version.json"));
+        Path manifest = sessionDir.resolve("version.json");
         Path coverage = Files.createFile(sessionDir.resolve("coverage.json"));
+        writeManifest(sessionDir, "1.0");
         IstanbulSourceFileCoverageDto dto = sourceDto("/proj/root/source.js", project("demo", "/proj/root"));
 
         try (MockedStatic<StaticCoverageVersionManifestReader> manifestReader = mockStatic(StaticCoverageVersionManifestReader.class);
@@ -135,6 +137,34 @@ class StaticCoverageParserTest {
             assertEquals(1, result.size());
             reader.verify(() -> IstanbulJsonCoverageReader.read(coverage), times(1));
             reader.verify(() -> IstanbulJsonCoverageReader.read(manifest), never());
+        }
+    }
+
+    @Test
+    void parse_whenManifestIsMissing_skipsSessionAndDoesNotWriteToConsole(@TempDir Path coverageRoot)
+            throws IOException {
+        Path missingManifestSession = Files.createDirectories(coverageRoot.resolve("a-missing"));
+        Path validSession = Files.createDirectories(coverageRoot.resolve("b-valid"));
+        Path missingManifestCoverage = Files.createFile(missingManifestSession.resolve("bad.json"));
+        Path validCoverage = Files.createFile(validSession.resolve("good.json"));
+        writeManifest(validSession, "1.0");
+        IstanbulSourceFileCoverageDto validDto = sourceDto("/proj/root/good.js", project("demo", "/proj/root"));
+
+        try (MockedStatic<IstanbulJsonCoverageReader> reader = mockStatic(IstanbulJsonCoverageReader.class);
+             MockedStatic<IstanbulFunctionLineMapper> mapper = mockStatic(IstanbulFunctionLineMapper.class)) {
+            reader.when(() -> IstanbulJsonCoverageReader.read(validCoverage)).thenReturn(validDto);
+            mapper.when(() -> IstanbulFunctionLineMapper.map(validDto)).thenReturn(List.of());
+
+            List<FileCoverage> result = StaticCoverageParser.parse(coverageRoot, context, null);
+
+            assertEquals(1, result.size());
+            reader.verify(() -> IstanbulJsonCoverageReader.read(missingManifestCoverage), never());
+            reader.verify(() -> IstanbulJsonCoverageReader.read(validCoverage), times(1));
+            String sessionMessage = NLS.getFormatted(CommonMessages.SKIPPED_STATIC_COVERAGE_SESSION,
+                    missingManifestSession,
+                    NLS.getFormatted(CommonMessages.MISSING_STATIC_COVERAGE_VERSION_MANIFEST));
+            verify(loggerHandler).log(anyString(), eq(ParasoftLevel.DEBUG), eq((Object) sessionMessage), isNull());
+            verify(console, never()).writeln(anyString(), eq(MessageSeverity.HIGH));
         }
     }
 
@@ -237,6 +267,8 @@ class StaticCoverageParserTest {
         Path subB = Files.createDirectories(staticCoverageDir.resolve("b"));
         Path first = Files.createFile(subA.resolve("dup.json"));
         Path duplicate = Files.createFile(subB.resolve("dup.json"));
+        writeManifest(subA, "1.0");
+        writeManifest(subB, "1.0");
 
         // Only whichever comes first (sorted) is parsed; the other is skipped.
         Path expectedParsed = first.compareTo(duplicate) < 0 ? first : duplicate;
@@ -267,6 +299,7 @@ class StaticCoverageParserTest {
     void parse_whenCoverageJsonCannotBeRead_continuesWithRemainingFiles(@TempDir Path appDir) throws IOException {
         Path bad = Files.createFile(appDir.resolve("bad.json"));
         Path good = Files.createFile(appDir.resolve("good.json"));
+        writeManifest(appDir, "1.0");
 
         IstanbulSourceFileCoverageDto dto = sourceDto("/proj/root/good.js", project("demo", "/proj/root"));
         IOException ioException = new IOException("boom");
@@ -293,6 +326,7 @@ class StaticCoverageParserTest {
     @Test
     void parse_whenNoCoverageJsonCanBeParsed_throwsAndReportsNoValidFiles(@TempDir Path appDir) throws IOException {
         Path bad = Files.createFile(appDir.resolve("bad.json"));
+        writeManifest(appDir, "1.0");
         IOException ioException = new IOException("boom");
 
         try (MockedStatic<IstanbulJsonCoverageReader> reader = mockStatic(IstanbulJsonCoverageReader.class);
@@ -314,6 +348,7 @@ class StaticCoverageParserTest {
     @Test
     void parse_whenProjectIsMissing_setsUnknownAttributes(@TempDir Path appDir) throws IOException {
         Path json = Files.createFile(appDir.resolve("noproj.json"));
+        writeManifest(appDir, "1.0");
 
         IstanbulSourceFileCoverageDto dto = sourceDto("some\\weird\\path\\noproj.js", null);
 
@@ -337,6 +372,7 @@ class StaticCoverageParserTest {
     @Test
     void parse_whenSourceIsOutsideProjectRoot_usesRawPathForResProjPath(@TempDir Path appDir) throws IOException {
         Path json = Files.createFile(appDir.resolve("outside.json"));
+        writeManifest(appDir, "1.0");
 
         // Use OS-appropriate absolute paths so Path.toAbsolutePath() is stable.
         Path projectRoot = appDir.resolve("proj-root");
@@ -373,6 +409,7 @@ class StaticCoverageParserTest {
     void parse_whenSourceFileHasNoExtension_usesFileNameForItemIdentity(@TempDir Path appDir)
             throws IOException {
         Path json = Files.createFile(appDir.resolve("coverage.json"));
+        writeManifest(appDir, "1.0");
         IstanbulSourceFileCoverageDto dto = sourceDto("/proj/root/README", project("demo", "/proj/root"));
 
         try (MockedStatic<IstanbulJsonCoverageReader> reader = mockStatic(IstanbulJsonCoverageReader.class);

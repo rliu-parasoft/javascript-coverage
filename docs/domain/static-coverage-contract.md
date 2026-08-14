@@ -27,7 +27,7 @@ The authoritative field constraints are in [`static-istanbul-coverage.schema.jso
 ## Consumer Responsibilities
 
 - `-app` must name a directory. The CLI scans the directory's immediate child directories as process output directories. Before validating and deserializing direct coverage JSON files, it reads the directory's `version.json`.
-- A version manifest must be a JSON object with non-blank string `schemaVersion` and `toolVersion` fields; additional fields are allowed. An absent manifest defaults to schema version `1.0`; a malformed or unsupported manifest causes that directory to be skipped.
+- A version manifest must be a JSON object with non-blank string `schemaVersion` and `toolVersion` fields; additional fields are allowed. An absent, unreadable, malformed, or unsupported manifest causes that directory to be skipped.
 - The Schema requires top-level `path`, `statementMap`, `fnMap`, `branchMap`, `s`, `f`, and `b`; unknown additional fields are allowed. `project` may be absent or `null`.
 - An unreadable or invalid individual snapshot is skipped and reported. Scanning fails when the directory contains no JSON, or when every JSON snapshot is invalid.
 - The CLI deduplicates by **snapshot filename**, not by the JSON `path`, and never merges coverage content. Across accepted process output directories, it keeps the file with the highest supported `schemaVersion`; for equal schema versions, sorted process output directory and filename order makes the first file win. `toolVersion` is validated but does not affect selection.

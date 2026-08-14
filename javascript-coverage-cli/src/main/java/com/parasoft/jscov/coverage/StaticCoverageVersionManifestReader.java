@@ -20,17 +20,25 @@ public final class StaticCoverageVersionManifestReader {
 
         Path manifestPath = sessionDirectory.resolve(VERSION_FILE_NAME);
         if (!Files.exists(manifestPath)) {
-            return StaticCoverageSchemaVersion.V1_0;
+            throw new IOException(NLS.getFormatted(CommonMessages.MISSING_STATIC_COVERAGE_VERSION_MANIFEST));
+        }
+
+        String manifestContent;
+        try {
+            manifestContent = Files.readString(manifestPath);
+        } catch (IOException e) {
+            throw unreadableManifest(e);
         }
 
         JsonNode manifest;
         try {
-            manifest = OBJECT_MAPPER.readTree(Files.readString(manifestPath));
+            manifest = OBJECT_MAPPER.readTree(manifestContent);
         } catch (IOException e) {
             throw invalidManifest(e.getMessage(), e);
         }
         if (manifest == null || !manifest.isObject()) {
-            throw invalidManifest("manifest must be a JSON object", null);
+            throw invalidManifest(NLS.getFormatted(
+                    CommonMessages.STATIC_COVERAGE_VERSION_MANIFEST_MUST_CONTAIN_JSON_OBJECT), null);
         }
 
         String schemaVersion = requiredTextValue(manifest, "schemaVersion");
@@ -46,7 +54,9 @@ public final class StaticCoverageVersionManifestReader {
             throws IOException {
         JsonNode field = manifest.get(fieldName);
         if (field == null || !field.isTextual() || field.asText().isBlank()) {
-            throw invalidManifest(fieldName + " must be a non-blank string", null);
+            throw invalidManifest(NLS.getFormatted(
+                    CommonMessages.STATIC_COVERAGE_VERSION_MANIFEST_FIELD_MUST_BE_NON_BLANK_STRING,
+                    fieldName), null);
         }
         return field.asText();
     }
@@ -54,5 +64,9 @@ public final class StaticCoverageVersionManifestReader {
     private static IOException invalidManifest(Object details, Throwable cause) {
         String message = NLS.getFormatted(CommonMessages.INVALID_STATIC_COVERAGE_VERSION_MANIFEST, details);
         return cause == null ? new IOException(message) : new IOException(message, cause);
+    }
+
+    private static IOException unreadableManifest(IOException cause) {
+        return new IOException(NLS.getFormatted(CommonMessages.UNREADABLE_STATIC_COVERAGE_VERSION_MANIFEST), cause);
     }
 }

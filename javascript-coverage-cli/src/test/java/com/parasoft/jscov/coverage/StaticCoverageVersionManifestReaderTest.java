@@ -24,8 +24,23 @@ class StaticCoverageVersionManifestReaderTest {
     Path tempDir;
 
     @Test
-    void read_defaultsToVersion1_0_whenManifestIsAbsent() throws IOException {
-        assertEquals(StaticCoverageSchemaVersion.V1_0, StaticCoverageVersionManifestReader.read(tempDir));
+    void read_rejectsMissingManifest() {
+        IOException exception = assertThrows(IOException.class,
+                () -> StaticCoverageVersionManifestReader.read(tempDir));
+
+        assertEquals(NLS.getFormatted(CommonMessages.MISSING_STATIC_COVERAGE_VERSION_MANIFEST),
+                exception.getMessage());
+    }
+
+    @Test
+    void read_rejectsUnreadableManifest() throws IOException {
+        Files.createDirectory(tempDir.resolve("version.json"));
+
+        IOException exception = assertThrows(IOException.class,
+                () -> StaticCoverageVersionManifestReader.read(tempDir));
+
+        assertEquals(NLS.getFormatted(CommonMessages.UNREADABLE_STATIC_COVERAGE_VERSION_MANIFEST),
+                exception.getMessage());
     }
 
     @Test
@@ -63,19 +78,16 @@ class StaticCoverageVersionManifestReaderTest {
     void read_rejectsInvalidJson() throws IOException {
         writeManifest("{ invalid json");
 
-        IOException exception = assertThrows(IOException.class,
-                () -> StaticCoverageVersionManifestReader.read(tempDir));
-
-        assertTrue(exception.getMessage().startsWith(
-                NLS.getFormatted(CommonMessages.INVALID_STATIC_COVERAGE_VERSION_MANIFEST, "").trim()));
+        assertInvalidManifest();
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("invalidRequiredFieldManifests")
-    void read_rejectsInvalidRequiredField(String scenario, String manifest) throws IOException {
+    void read_rejectsInvalidRequiredField(String scenario, String fieldName, String manifest) throws IOException {
         writeManifest(manifest);
 
-        assertInvalidManifest();
+        assertInvalidManifest(CommonMessages.STATIC_COVERAGE_VERSION_MANIFEST_FIELD_MUST_BE_NON_BLANK_STRING,
+                fieldName);
     }
 
     @Test
@@ -84,10 +96,7 @@ class StaticCoverageVersionManifestReaderTest {
             [{"schemaVersion": "1.0", "toolVersion": "6.0.3-1"}]
             """);
 
-        IOException exception = assertThrows(IOException.class,
-                () -> StaticCoverageVersionManifestReader.read(tempDir));
-
-        assertTrue(exception.getMessage().contains("manifest must be a JSON object"));
+        assertInvalidManifest(CommonMessages.STATIC_COVERAGE_VERSION_MANIFEST_MUST_CONTAIN_JSON_OBJECT);
     }
 
     private void writeManifest(String content) throws IOException {
@@ -96,47 +105,47 @@ class StaticCoverageVersionManifestReaderTest {
 
     private static Stream<Arguments> invalidRequiredFieldManifests() {
         return Stream.of(
-                Arguments.of("missing schemaVersion", """
+                Arguments.of("missing schemaVersion", "schemaVersion", """
                         {
                           "toolVersion": "6.0.3-1"
                         }
                         """),
-                Arguments.of("missing toolVersion", """
+                Arguments.of("missing toolVersion", "toolVersion", """
                         {
                           "schemaVersion": "1.0"
                         }
                         """),
-                Arguments.of("blank schemaVersion", """
+                Arguments.of("blank schemaVersion", "schemaVersion", """
                         {
                           "schemaVersion": " ",
                           "toolVersion": "6.0.3-1"
                         }
                         """),
-                Arguments.of("blank toolVersion", """
+                Arguments.of("blank toolVersion", "toolVersion", """
                         {
                           "schemaVersion": "1.0",
                           "toolVersion": ""
                         }
                         """),
-                Arguments.of("null schemaVersion", """
+                Arguments.of("null schemaVersion", "schemaVersion", """
                         {
                           "schemaVersion": null,
                           "toolVersion": "6.0.3-1"
                         }
                         """),
-                Arguments.of("null toolVersion", """
+                Arguments.of("null toolVersion", "toolVersion", """
                         {
                           "schemaVersion": "1.0",
                           "toolVersion": null
                         }
                         """),
-                Arguments.of("non-string schemaVersion", """
+                Arguments.of("non-string schemaVersion", "schemaVersion", """
                         {
                           "schemaVersion": 1,
                           "toolVersion": "6.0.3-1"
                         }
                         """),
-                Arguments.of("non-string toolVersion", """
+                Arguments.of("non-string toolVersion", "toolVersion", """
                         {
                           "schemaVersion": "1.0",
                           "toolVersion": true
@@ -148,7 +157,18 @@ class StaticCoverageVersionManifestReaderTest {
         IOException exception = assertThrows(IOException.class,
                 () -> StaticCoverageVersionManifestReader.read(tempDir));
 
+        String detailsMarker = "__DETAILS__";
+        String expectedPrefix = NLS.getFormatted(CommonMessages.INVALID_STATIC_COVERAGE_VERSION_MANIFEST,
+                detailsMarker);
         assertTrue(exception.getMessage().startsWith(
-                NLS.getFormatted(CommonMessages.INVALID_STATIC_COVERAGE_VERSION_MANIFEST, "").trim()));
+                expectedPrefix.substring(0, expectedPrefix.indexOf(detailsMarker))));
+    }
+
+    private void assertInvalidManifest(String detailsMessage, Object... detailsArguments) {
+        IOException exception = assertThrows(IOException.class,
+                () -> StaticCoverageVersionManifestReader.read(tempDir));
+
+        assertEquals(NLS.getFormatted(CommonMessages.INVALID_STATIC_COVERAGE_VERSION_MANIFEST,
+                NLS.getFormatted(detailsMessage, detailsArguments)), exception.getMessage());
     }
 }

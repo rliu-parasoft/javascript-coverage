@@ -3,7 +3,7 @@
 Gradle multi-module project that builds a single distribution zip containing:
 - Java CLI jar: `parasoft-jscov.jar` (built via ShadowJar)
 - Integration (Node) module artifacts under `integration/<module>/`
-- Placeholder `docs/` and `licenses/` directories
+- Placeholder `manuals/` and `licenses/` directories
 - `EULA.txt` and `settings.properties` at the zip root
 
 ## Build
@@ -57,7 +57,7 @@ Note:
 
 `parasoft_javascript_coverage_1.0.0.zip` contains:
 ```text
-docs/
+manuals/
 licenses/
 integration/
   parasoft-istanbul-lib-instrument/
@@ -68,7 +68,7 @@ settings.properties
 ```
 
 Notes:
-- `docs/` and `licenses/` are included as directories (placeholders for now).
+- `manuals/` and `licenses/` are included as directories (placeholders for now).
 - `EULA.txt` and `settings.properties` come from `dist-resources/`.
 
 ## Adding A New Integration (Node) Module

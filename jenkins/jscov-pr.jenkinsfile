@@ -77,7 +77,7 @@ pipeline {
                         parasoftFindings(
                             id: 'jtest-static-analysis',
                             name: 'Jtest Static Analysis',
-                            pattern: 'artifacts/static/java/report/report.xml',
+                            pattern: 'artifacts/reports/static-analysis/java/report.xml',
                             localSettingsPath: 'jenkins/scripts/jtest.properties'
                         )
                     ],
@@ -100,37 +100,80 @@ pipeline {
                         checkStyle(
                             id: 'eslint-static-analysis',
                             name: 'ESLint Static Analysis',
-                            pattern: 'artifacts/static/js/**/checkstyle.xml'
+                            pattern: 'artifacts/reports/static-analysis/js/**/checkstyle.xml'
                         )
                     ],
                     qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]]
                 )
             }
         }
-    }
 
-    // ------------------------------------------------------------------
-    // TODO: downstream stages consume the pre-analysis result.
-    //
-    // Read `artifacts/steps.csv` FIRST (line 1 = headers, line 2 = values)
-    // and get the six flags:
-    //   NEED_JS_TEST_TIA     — JS test/src changed; run FULL JS tests since there is no TIA for JS(mocha)
-    //   NEED_JS_TEST_FULL    — JS build/dependency config changed; run the FULL JS tests(mocha)
-    //   NEED_JAVA_TEST_TIA   — Java test/src changed; run TIA Java tests(Jtest)
-    //   NEED_JAVA_TEST_FULL  — Java build/dependency config changed; run the full Java tests(Jtest)
-    //   NEED_JS_SA           — JS static analysis(ESLint) must be re-run
-    //   NEED_JAVA_SA         — Java static analysis(Jtest) must be re-run
-    //
-    // Rule: NEED_JS_TEST_* and NEED_JAVA_TEST_* are groups,
-    //       FULL wins over TIA which means is *_FULL is true the full tests must be re-run
-    //       no matter what the value of *_TIA is.
-    // ------------------------------------------------------------------
+        stage('Test Execution (Java)') {
+            when {
+                expression { env.NEED_JAVA_TEST_TIA == 'true' || env.NEED_JAVA_TEST_FULL == 'true' }
+            }
+            steps {
+                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                    sh 'bash jenkins/scripts/run-java-tests.sh'
+                }
+                recordParasoftCoverage(
+                    pattern: 'artifacts/reports/unit-tests/java/**/coverage.xml',
+                    sourceCodeEncoding: 'UTF-8'
+                )
+                xunit(
+                    thresholds: [
+                        failed(unstableThreshold: '0'),
+                        skipped(unstableThreshold: '0')
+                    ],
+                    tools: [JUnit(
+                        pattern: 'artifacts/reports/unit-tests/java/**/junit/*.xml',
+                        deleteOutputFiles: false,
+                        failIfNotNew: false,
+                        skipNoTestFiles: true,
+                        stopProcessingIfError: true
+                    )]
+                )
+            }
+        }
+
+        stage('Test Execution (JavaScript)') {
+            when {
+                expression { env.NEED_JS_TEST_TIA == 'true' || env.NEED_JS_TEST_FULL == 'true' }
+            }
+            steps {
+                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                    sh 'bash jenkins/scripts/run-js-tests.sh'
+                }
+                recordCoverage(
+                    id: 'js-coverage',
+                    name: 'Javascript Coverage',
+                    enabledForFailure: true,
+                    failOnError: false,
+                    tools: [[parser: 'CLOVER', pattern: 'artifacts/reports/unit-tests/js/**/coverage/clover.xml']]
+                )
+                xunit(
+                    thresholds: [
+                        failed(unstableThreshold: '0'),
+                        skipped(unstableThreshold: '4')
+                    ],
+                    tools: [JUnit(
+                        pattern: 'artifacts/reports/unit-tests/js/**/test/report.xml',
+                        deleteOutputFiles: false,
+                        failIfNotNew: true,
+                        skipNoTestFiles: false,
+                        stopProcessingIfError: true
+                    )]
+                )
+            }
+        }
+    }
 
     post {
         always {
             script {
                 env.PR_BUILD_RESULT = currentBuild.currentResult ?: 'SUCCESS'
             }
+            sh 'bash jenkins/scripts/build-summary.sh'
             withCredentials([
                 usernamePassword(credentialsId: 'jscov-bitbucket-pr-bot', usernameVariable: 'API_USERNAME', passwordVariable: 'API_PASSWORD')
             ]) {

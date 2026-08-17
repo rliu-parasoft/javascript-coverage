@@ -59,7 +59,7 @@ curl --fail --silent --show-error \
     -H "Content-Type: application/json" \
     --url "${BITBUCKET_API}/pull-requests/${CHANGE_ID}/comments" \
     --data "{\"text\":${SUMMARY}}" \
-    -o "${ARTIFACTS_DIR}/comment.json"
+    -o "${ARTIFACTS_DIR}/pr_comment.json"
 
 echo "Posted summary to PR #${CHANGE_ID}."
 echo "-----------------------"

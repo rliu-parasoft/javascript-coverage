@@ -4,7 +4,8 @@
   "categories": {
     "js_test": {
       "glob": [
-        "integration/**/test/**.test.js"
+        "integration/**/test/**.test.js",
+        "integration/**/test/**.test.ts"
       ]
     },
     "js_src": {

@@ -1,31 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-artifacts_dir="${ARTIFACTS_DIR:-artifacts}"
-static_dir="${artifacts_dir}/static/js"
-mkdir -p "$static_dir"
+workspace="${WORKSPACE:-$(pwd)}"
+artifacts_dir="${ARTIFACTS_DIR:-$workspace/artifacts}"
+report_dir="$workspace/reports/static-analysis/js"
+output_dir="$artifacts_dir/reports/static-analysis/js"
+mkdir -p "$report_dir" "$output_dir"
 
-bash gradlew --no-daemon :integration:lintReport 2>&1 | tee "$static_dir/eslint.log"
+bash "$workspace/gradlew" --no-daemon :integration:lintReport 2>&1 | tee "$report_dir/eslint.log"
 
 violations=0
-mapfile -t reports < <(find integration -type f -path '*/build/reports/eslint/checkstyle.xml' -print)
+found=0
 
-if (( ${#reports[@]} == 0 )); then
+for module_dir in "$workspace"/integration/*/; do
+    [[ -d "$module_dir" ]] || continue
+    module_name=$(basename "$module_dir")
+
+    report="$module_dir/build/reports/eslint/checkstyle.xml"
+    [[ -f "$report" ]] || continue
+    found=$((found + 1))
+
+    count=$(xmllint --xpath 'count(//error)' "$report")
+    violations=$((violations + count))
+
+    mkdir -p "$report_dir/$module_name"
+    cp "$report" "$report_dir/$module_name/"
+done
+
+if (( found == 0 )); then
     echo 'No ESLint Checkstyle report was generated.' >&2
     exit 1
 fi
 
-for report in "${reports[@]}"; do
-    destination="$static_dir/${report#integration/}"
-    mkdir -p "$(dirname "$destination")"
-    cp "$report" "$destination"
+cp -R "$report_dir"/. "$output_dir/"
 
-    count=$(xmllint --xpath 'count(//error)' "$report")
-    violations=$((violations + count))
-done
-
-cat >> "$artifacts_dir/summary.md" <<EOF
-## Static Analysis (JavaScript)
-
-- ESLint found $violations violation(s)
-EOF
+mkdir -p "$artifacts_dir/status"
+echo "JS_SA_VIOLATIONS=$violations" >> "$artifacts_dir/status/all.env"

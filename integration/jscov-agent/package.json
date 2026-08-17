@@ -12,12 +12,14 @@
     "lint:report": "eslint src --format eslint-formatter-checkstyle --output-file build/reports/eslint/checkstyle.xml"
   },
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "yargs-parser": "^22.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@types/express": "^5.0.6",
     "@types/node": "^24.0.0",
+    "@types/yargs-parser": "^21.0.3",
     "@vitest/coverage-istanbul": "^4.1.10",
     "eslint": "^9.0.0",
     "eslint-formatter-checkstyle": "9.0.1",

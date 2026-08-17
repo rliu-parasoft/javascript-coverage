@@ -13,8 +13,8 @@ export async function startAgent(config: AgentConfig): Promise<StartedAgent> {
         register(app);
     }
 
-    const server = await listen(app, config.port);
-    console.log(`Parasoft JavaScript runtime coverage agent started on port ${config.port}`);
+    const server = await listen(app, config.restServerPort);
+    console.log(`Parasoft JavaScript runtime coverage agent started on port ${config.restServerPort}`);
 
     return {
         close() {

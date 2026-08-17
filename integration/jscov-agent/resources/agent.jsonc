@@ -1,2 +1,12 @@
-{}
-
+{
+    // Specifies where the runtime data will be stored
+    "jscov.agent.runtimeData": "/path/to/runtime/coverage",
+    // Enables/disables automatic start of a runtime data collection session
+    "jscov.agent.session.autostart": true,
+    // Enables/disables remote access to coverage sessions
+    "jscov.agent.restServerEnabled": true,
+    // Sets up agent REST server communication port
+    "jscov.agent.restServerPort": 8050,
+    // Enables/disables verbose output to log file
+    "jscov.agent.debug": false
+}

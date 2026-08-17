@@ -32,7 +32,29 @@ pipeline {
     }
 
     stages {
+        stage('Check Branch Type') {
+            steps {
+                script {
+                    def branch = env.CHANGE_BRANCH ?: env.BRANCH_NAME ?: ''
+                    def allowed = ['feature', 'bugfix', 'hotfix', 'release']
+                    def branchType = branch.split('/')[0].toLowerCase()
+                    def isAllowed = branch.contains('/') && allowed.contains(branchType)
+                    if (!isAllowed) {
+                        def reason = "Branch type does not belong to any of ${allowed.join(', ')}"
+                        echo "Skipped: ${reason}"
+                        env.SKIP_REASON = reason
+                        env.SKIP_BRANCH = branch
+                        env.PR_BUILD_RESULT = 'SKIPPED'
+
+                        currentBuild.result = 'SUCCESS'
+                        return
+                    }
+                }
+            }
+        }
+
         stage('Checkout') {
+            when { expression { env.PR_BUILD_RESULT != 'SKIPPED' } }
             steps {
                 cleanWs()
                 checkout scm
@@ -40,6 +62,7 @@ pipeline {
         }
 
         stage('Setup') {
+            when { expression { env.PR_BUILD_RESULT != 'SKIPPED' } }
             steps {
                 withCredentials([
                     usernamePassword(credentialsId: 'jscov-bitbucket-pr-bot', usernameVariable: 'API_USERNAME', passwordVariable: 'API_PASSWORD')
@@ -50,6 +73,7 @@ pipeline {
         }
 
         stage('Load Execution Plan') {
+            when { expression { env.PR_BUILD_RESULT != 'SKIPPED' } }
             steps {
                 script {
                     def lines = readFile('artifacts/steps.csv').readLines().findAll { it.trim() }
@@ -65,7 +89,7 @@ pipeline {
 
         stage('Static Analysis (Java)') {
             when {
-                expression { env.NEED_JAVA_SA == 'true' }
+                expression { env.PR_BUILD_RESULT != 'SKIPPED' && env.NEED_JAVA_SA == 'true' }
             }
             steps {
                 catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
@@ -88,7 +112,7 @@ pipeline {
 
         stage('Static Analysis (JavaScript)') {
             when {
-                expression { env.NEED_JS_SA == 'true' }
+                expression { env.PR_BUILD_RESULT != 'SKIPPED' && env.NEED_JS_SA == 'true' }
             }
             steps {
                 catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
@@ -171,7 +195,9 @@ pipeline {
     post {
         always {
             script {
-                env.PR_BUILD_RESULT = currentBuild.currentResult ?: 'SUCCESS'
+                if (env.PR_BUILD_RESULT != 'SKIPPED') {
+                    env.PR_BUILD_RESULT = currentBuild.currentResult ?: 'SUCCESS'
+                }
             }
             sh 'bash jenkins/scripts/build-summary.sh'
             withCredentials([

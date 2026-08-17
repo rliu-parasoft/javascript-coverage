@@ -14,8 +14,13 @@
 #   PR_BUILD_RESULT - Jenkins build result supplied by the Pipeline post stage
 #   ARTIFACTS_DIR   - Artifacts directory (default: artifacts)
 #
+# Optional environment variables (for SKIPPED state):
+#   SKIP_REASON     - Reason why the build was skipped
+#   SKIP_BRANCH     - Branch name that was skipped
+#
 # Design notes:
 #   - Non-PR build: exit 0 immediately
+#   - SKIPPED state: post skip comment and exit (no NEEDS_WORK)
 #   - summary.md missing: exit 0 (avoid polluting the post-stage outcome)
 #   - API call fails: exit non-zero so Jenkins reports the failure
 #
@@ -34,8 +39,44 @@ fi
 : "${API_PASSWORD:?API_PASSWORD is required}"
 : "${PR_BUILD_RESULT:?PR_BUILD_RESULT is required}"
 
+# ============================================
+# Handle SKIPPED state (branch type not allowed)
+# ============================================
+if [[ "${PR_BUILD_RESULT}" == "SKIPPED" ]]; then
+    echo "---- Build was SKIPPED ----"
+
+    SKIP_COMMENT="Build Skipped
+
+Branch: ${SKIP_BRANCH:-Unknown}
+Reason: ${SKIP_REASON:-No reason provided}
+
+Merge check passed - no build required for this branch type"
+
+    if [[ -n "${BUILD_URL:-}" ]]; then
+        SKIP_COMMENT="${SKIP_COMMENT}
+
+---
+Build details: [${BUILD_URL}](${BUILD_URL})"
+    fi
+
+    SKIP_COMMENT_ESCAPED=$(echo -n "${SKIP_COMMENT}" | jq -Rsa .)
+
+    echo "Posting skip comment to PR #${CHANGE_ID}..."
+    curl --fail --silent --show-error \
+        -u "${API_USERNAME}:${API_PASSWORD}" \
+        -H "Content-Type: application/json" \
+        --url "${BITBUCKET_API}/pull-requests/${CHANGE_ID}/comments" \
+        --data "{\"text\":${SKIP_COMMENT_ESCAPED}}" \
+        -o "${ARTIFACTS_DIR}/comment.json"
+
+    echo "Posted skip summary to PR #${CHANGE_ID}."
+    echo "-----------------------"
+    echo
+    exit 0
+fi
+
 # ---------------------------------------------------------------------------
-# Post summary comment
+# Post summary comment (normal builds)
 # ---------------------------------------------------------------------------
 if [[ ! -s "${SUMMARY_FILE}" ]]; then
     echo "No summary found at ${SUMMARY_FILE}; skipping PR comment."

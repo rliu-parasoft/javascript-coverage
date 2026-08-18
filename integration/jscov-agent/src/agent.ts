@@ -1,4 +1,4 @@
-import { parseCommandLine, resolveConfiguration, type AgentConfig } from './configuration/config.js';
+import { parseCommandLine, readSettingsFile, resolveConfiguration, type AgentConfig } from './configuration/config.js';
 import { LoggerProvider } from './logging/logger.js';
 import { startAgent, type StartedAgent } from './server/server.js';
 import { errorMessage } from './utils.js';
@@ -12,7 +12,15 @@ function resolveAgentConfiguration(): AgentConfig | undefined {
     try {
         const commandLine = parseCommandLine(process.argv.slice(2));
         process.argv.splice(2, process.argv.length - 2, ...commandLine.targetArgs);
-        const resolution = resolveConfiguration([{ source: 'ARGS', input: commandLine.input }]);
+        const settingsFile = readSettingsFile(commandLine.input.settings);
+        if (settingsFile.error) {
+            process.stderr.write(`[JSCOV-AGENT][ERROR]: ${settingsFile.error}\n`);
+            return undefined;
+        }
+        const resolution = resolveConfiguration([
+            { source: 'ARGS', input: commandLine.input },
+            { source: 'SETTINGS_FILE', input: settingsFile.input }
+        ]);
 
         if (resolution.error) {
             process.stderr.write(`[JSCOV-AGENT][ERROR]: ${resolution.error}\n`);

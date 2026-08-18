@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { once } from 'node:events';
@@ -18,7 +18,8 @@ type AgentArgsFactory = (isolatedRoot: string, runtimeData: string) => string[];
 function spawnPreloadedApp(
     utaFixture = 'uta-server.js',
     applicationArgs: string[] = [],
-    createAgentArgs: AgentArgsFactory = (_isolatedRoot, runtimeData) => ['--jscov.agent.runtimeData', runtimeData]
+    createAgentArgs: AgentArgsFactory = (_isolatedRoot, runtimeData) => ['--jscov.agent.runtimeData', runtimeData],
+    preloadModule = 'agent.js'
 ): PreloadedApp {
     const isolatedRoot = mkdtempSync(join(tmpdir(), 'jscov-agent-preload-'));
     const runtimeData = join(isolatedRoot, 'runtime-data');
@@ -29,7 +30,7 @@ function spawnPreloadedApp(
     return {
         isolatedRoot,
         child: spawn(process.execPath, [
-            '--import', './agent.js',
+            '--import', `./${preloadModule}`,
             'uta-server.js',
             ...agentArgs,
             ...applicationArgs
@@ -57,6 +58,18 @@ function collectOutput(child: ChildProcess): CapturedOutput {
 
 function removeIsolatedApp(isolatedRoot: string): void {
     rmSync(isolatedRoot, { recursive: true, force: true });
+}
+
+async function waitForLogContent(logFilePath: string, expected: string): Promise<string> {
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+        const contents = readFileSync(logFilePath, 'utf8');
+        if (contents.includes(expected)) {
+            return contents;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`Timed out waiting for log file to contain "${expected}". File: ${logFilePath}`);
 }
 
 async function waitForOutput(output: () => string, errorOutput: () => string, expected: string): Promise<void> {
@@ -176,6 +189,149 @@ describe('agent preload', () => {
         try {
             await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
             expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: Value of 'settings' configuration should point to file but points incorrectly to directory: ${app.isolatedRoot}`);
+            expect(output.stdout()).not.toContain('Parasoft JavaScript runtime coverage agent started on port');
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
+    it('reads JSONC settings and gives CLI values precedence', async () => {
+        const app = spawnPreloadedApp('uta-server.js', [], (isolatedRoot, runtimeData) => {
+            const settings = join(isolatedRoot, 'agent.jsonc');
+            writeFileSync(settings, `{
+                // Values from the file are tagged as SETTINGS_FILE.
+                "jscov.agent.runtimeData": "ignored-by-cli",
+                "jscov.agent.session.autostart": false,
+                "jscov.agent.restServerEnabled": false,
+                "jscov.agent.restServerPort": 9010,
+                "jscov.agent.debug": true
+            }`);
+            return [
+                '--jscov.agent.settings', settings,
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.restServerPort', '8050'
+            ];
+        });
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            expect(output.stdout()).toContain('Parasoft JavaScript runtime coverage agent started on port 8050');
+
+            const runtimeData = join(app.isolatedRoot, 'runtime-data');
+            const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-000001-\d{10}\.log$/.test(file));
+            expect(logFile).toBeDefined();
+            const logFilePath = join(runtimeData, logFile);
+            const fileContents = await waitForLogContent(logFilePath, `Agent parameter: runtimeData=${runtimeData} (ARGS)`);
+            expect(fileContents).toContain('Agent parameter: sessionAutostart=false (SETTINGS_FILE)');
+            expect(fileContents).toContain('Agent parameter: restServerEnabled=false (SETTINGS_FILE)');
+            expect(fileContents).toContain('Agent parameter: restServerPort=8050 (ARGS)');
+            expect(fileContents).toContain('Agent parameter: debug=true (SETTINGS_FILE)');
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
+    it('uses runtimeData from settings file when not provided on command line', async () => {
+        const app = spawnPreloadedApp('uta-server.js', [], (isolatedRoot) => {
+            const runtimeData = join(isolatedRoot, 'runtime-data');
+            const settings = join(isolatedRoot, 'agent.jsonc');
+            writeFileSync(settings, JSON.stringify({
+                'jscov.agent.runtimeData': runtimeData,
+                'jscov.agent.debug': true
+            }));
+            return ['--jscov.agent.settings', settings];
+        });
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            expect(output.stdout()).toContain('Parasoft JavaScript runtime coverage agent started on port 8050');
+
+            const runtimeData = join(app.isolatedRoot, 'runtime-data');
+            const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-000001-\d{10}\.log$/.test(file));
+            expect(logFile).toBeDefined();
+            const logFilePath = join(runtimeData, logFile);
+            const fileContents = await waitForLogContent(logFilePath, `Agent parameter: runtimeData=${runtimeData} (SETTINGS_FILE)`);
+            expect(fileContents).toContain('Parasoft JavaScript runtime coverage agent configuration:');
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
+    it('reports malformed JSONC settings without preventing the target from running', async () => {
+        const app = spawnPreloadedApp('uta-server.js', [], (isolatedRoot, runtimeData) => {
+            const settings = join(isolatedRoot, 'agent.jsonc');
+            writeFileSync(settings, '{ "jscov.agent.debug": }');
+            return [
+                '--jscov.agent.settings', settings,
+                '--jscov.agent.runtimeData', runtimeData
+            ];
+        });
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: Agent settings file contains invalid JSONC: ${join(app.isolatedRoot, 'agent.jsonc')}`);
+            expect(output.stdout()).not.toContain('Parasoft JavaScript runtime coverage agent started on port');
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
+    it('reports unreadable settings without preventing the target from running', async () => {
+        const app = spawnPreloadedApp('uta-server.js', [], (isolatedRoot, runtimeData) => {
+            const settings = join(isolatedRoot, 'agent.jsonc');
+            writeFileSync(settings, '{}');
+            writeFileSync(join(isolatedRoot, 'unreadable-agent.js'), `
+                import fs from 'node:fs';
+                import { syncBuiltinESMExports } from 'node:module';
+
+                const originalReadFileSync = fs.readFileSync;
+                fs.readFileSync = (path, ...args) => {
+                    if (path === ${JSON.stringify(settings)}) {
+                        throw new Error('EACCES');
+                    }
+                    return originalReadFileSync(path, ...args);
+                };
+                syncBuiltinESMExports();
+                await import('./agent.js');
+            `);
+            return [
+                '--jscov.agent.settings', settings,
+                '--jscov.agent.runtimeData', runtimeData
+            ];
+        }, 'unreadable-agent.js');
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: Agent settings file cannot be read: ${join(app.isolatedRoot, 'agent.jsonc')}`);
+            expect(output.stdout()).not.toContain('Parasoft JavaScript runtime coverage agent started on port');
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
+    it('reports non-existent settings without preventing the target from running', async () => {
+        const app = spawnPreloadedApp('uta-server.js', [], (isolatedRoot, runtimeData) => {
+            const missingSettings = join(isolatedRoot, 'nonexistent.jsonc');
+            return [
+                '--jscov.agent.settings', missingSettings,
+                '--jscov.agent.runtimeData', runtimeData
+            ];
+        });
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: Agent settings file does not exist: ${join(app.isolatedRoot, 'nonexistent.jsonc')}`);
+            expect(output.stdout()).not.toContain('Parasoft JavaScript runtime coverage agent started on port');
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);

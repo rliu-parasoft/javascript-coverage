@@ -1,4 +1,5 @@
-import { mkdirSync, statSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync } from 'node:fs';
+import { parse as parseJsonc, type ParseError } from 'jsonc-parser';
 import parse from 'yargs-parser';
 import { errorMessage } from '../utils.js';
 
@@ -99,6 +100,56 @@ export function parseCommandLine(args: string[]): CommandLineConfig {
     }
 
     return { input, targetArgs };
+}
+
+export interface SettingsFileResult {
+    input: AgentConfigInput;
+    error: string | undefined;
+}
+
+export function readSettingsFile(settings: unknown): SettingsFileResult {
+    let settingsPath: string | undefined;
+    try {
+        settingsPath = resolveSettings(settings);
+    } catch (error) {
+        return { input: {}, error: error instanceof Error ? error.message : String(error) };
+    }
+    if (settingsPath === undefined) {
+        return { input: {}, error: undefined };
+    }
+
+    let contents: string;
+    try {
+        contents = readFileSync(settingsPath, 'utf8');
+    } catch {
+        return { input: {}, error: `Agent settings file cannot be read: ${settingsPath}` };
+    }
+
+    const errors: ParseError[] = [];
+    const parsed: unknown = parseJsonc(contents, errors);
+
+    if (parsed === null || parsed === undefined) {
+        return { input: {}, error: undefined };
+    }
+    if (errors.length > 0) {
+        return { input: {}, error: `Agent settings file contains invalid JSONC: ${settingsPath}` };
+    }
+    if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { input: {}, error: `Agent settings file does not contain a JSON object: ${settingsPath}` };
+    }
+
+    const values = parsed as Record<string, unknown>;
+    return {
+        input: {
+            runtimeData: values['jscov.agent.runtimeData'],
+            sessionAutostart: values['jscov.agent.session.autostart'],
+            restServerEnabled: values['jscov.agent.restServerEnabled'],
+            restServerPort: values['jscov.agent.restServerPort'],
+            debug: values['jscov.agent.debug'],
+            silentMode: values['jscov.agent.silentMode']
+        },
+        error: undefined
+    };
 }
 
 export function resolveConfiguration(inputs: readonly ConfigurationInput[]): ConfigurationResolution {

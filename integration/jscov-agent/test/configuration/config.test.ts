@@ -1,8 +1,11 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { parseCommandLine, resolveConfiguration, type AgentConfig, type AgentConfigInput, type ConfigurationInput } from '../../src/configuration/config.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parseCommandLine, readSettingsFile, resolveConfiguration, type AgentConfig, type AgentConfigInput, type ConfigurationInput } from '../../src/configuration/config.js';
+
+vi.mock('node:fs', { spy: true });
 
 function resolveInput(input: AgentConfigInput): AgentConfig {
     const resolution = resolveConfiguration([{ source: 'ARGS', input }]);
@@ -18,7 +21,10 @@ function resolveArguments(args: string[]): AgentConfig {
 
 describe('configuration', () => {
     const temporaryRoots: string[] = [];
-    afterEach(() => temporaryRoots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
+    afterEach(() => {
+        vi.restoreAllMocks();
+        temporaryRoots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }));
+    });
 
     it('creates runtime data and returns documented defaults', () => {
         const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
@@ -28,6 +34,133 @@ describe('configuration', () => {
             settings: undefined, runtimeData, sessionAutostart: true, restServerEnabled: true, restServerPort: 8050, debug: false, silentMode: false
         });
         expect(existsSync(runtimeData)).toBe(true);
+    });
+
+    it('reads only supported values from a JSONC settings file', () => {
+        const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
+        temporaryRoots.push(root);
+        const settings = join(root, 'agent.jsonc');
+        const runtimeData = join(root, 'runtime-data-from-settings');
+        writeFileSync(settings, `{
+            // JSONC comments are supported.
+            "jscov.agent.runtimeData": ${JSON.stringify(runtimeData)},
+            "jscov.agent.session.autostart": false,
+            "jscov.agent.restServerEnabled": false,
+            "jscov.agent.restServerPort": 9010,
+            "jscov.agent.debug": true,
+            "jscov.agent.silentMode": true,
+            "jscov.agent.include": "ignored",
+            "jscov.agent.settings": "ignored.jsonc"
+        }`);
+
+        expect(readSettingsFile(settings)).toEqual({
+            input: {
+                runtimeData,
+                sessionAutostart: false,
+                restServerEnabled: false,
+                restServerPort: 9010,
+                debug: true,
+                silentMode: true
+            },
+            error: undefined
+        });
+    });
+
+    it('returns an error when a settings file contains malformed JSONC', () => {
+        const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
+        temporaryRoots.push(root);
+        const settings = join(root, 'agent.jsonc');
+        writeFileSync(settings, '{ "jscov.agent.debug": }');
+
+        const result = readSettingsFile(settings);
+        expect(result.input).toEqual({});
+        expect(result.error).toBe(`Agent settings file contains invalid JSONC: ${settings}`);
+    });
+
+    it('returns an error when a settings file cannot be read', () => {
+        const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
+        temporaryRoots.push(root);
+        const settings = join(root, 'agent.jsonc');
+        writeFileSync(settings, '{}');
+        vi.mocked(fs.readFileSync).mockImplementationOnce(() => {
+            throw new Error('EACCES');
+        });
+
+        const result = readSettingsFile(settings);
+        expect(result.input).toEqual({});
+        expect(result.error).toBe(`Agent settings file cannot be read: ${settings}`);
+    });
+
+    it('returns an error when a settings file does not exist', () => {
+        const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
+        temporaryRoots.push(root);
+        const missingSettings = join(root, 'missing.jsonc');
+
+        const result = readSettingsFile(missingSettings);
+        expect(result.input).toEqual({});
+        expect(result.error).toBe(`Agent settings file does not exist: ${missingSettings}`);
+    });
+
+    it('returns an error when a settings path points to a directory', () => {
+        const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
+        temporaryRoots.push(root);
+
+        const result = readSettingsFile(root);
+        expect(result.input).toEqual({});
+        expect(result.error).toBe(`Value of 'settings' configuration should point to file but points incorrectly to directory: ${root}`);
+    });
+
+    it('returns an error when settings file contains a top-level array', () => {
+        const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
+        temporaryRoots.push(root);
+        const settings = join(root, 'agent.jsonc');
+        writeFileSync(settings, '[1, 2, 3]');
+
+        const result = readSettingsFile(settings);
+        expect(result.input).toEqual({});
+        expect(result.error).toBe(`Agent settings file does not contain a JSON object: ${settings}`);
+    });
+
+    it.each(['"hello"', '42', 'true'])('returns an error when settings file contains a top-level primitive: %s', (content) => {
+        const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
+        temporaryRoots.push(root);
+        const settings = join(root, 'agent.jsonc');
+        writeFileSync(settings, content);
+
+        const result = readSettingsFile(settings);
+        expect(result.input).toEqual({});
+        expect(result.error).toBe(`Agent settings file does not contain a JSON object: ${settings}`);
+    });
+
+    it('returns empty input without error for an empty settings file', () => {
+        const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
+        temporaryRoots.push(root);
+        const settings = join(root, 'agent.jsonc');
+        writeFileSync(settings, '');
+
+        expect(readSettingsFile(settings)).toEqual({ input: {}, error: undefined });
+    });
+
+    it('returns empty input without error for a comments-only settings file', () => {
+        const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
+        temporaryRoots.push(root);
+        const settings = join(root, 'agent.jsonc');
+        writeFileSync(settings, '// This file only has comments\n/* block comment */');
+
+        expect(readSettingsFile(settings)).toEqual({ input: {}, error: undefined });
+    });
+
+    it('returns empty input without error when settings file contains null', () => {
+        const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
+        temporaryRoots.push(root);
+        const settings = join(root, 'agent.jsonc');
+        writeFileSync(settings, 'null');
+
+        expect(readSettingsFile(settings)).toEqual({ input: {}, error: undefined });
+    });
+
+    it('returns empty input without error when settings is not provided', () => {
+        expect(readSettingsFile(undefined)).toEqual({ input: {}, error: undefined });
     });
 
     it('uses explicit values and defaults non-numeric ports', () => {

@@ -54,6 +54,7 @@ lombok.config
 !/.agents/skills/
 /.agents/skills/*
 !/.agents/skills/regression-parasoft-istanbul-lib-instrument
+!/.agents/skills/evidence-backed-verification
 /.agent
 /.windsurf
 /.claude

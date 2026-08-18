@@ -61,6 +61,7 @@ Build details: [${BUILD_URL}](${BUILD_URL})"
 
     SKIP_COMMENT_ESCAPED=$(echo -n "${SKIP_COMMENT}" | jq -Rsa .)
 
+    mkdir -p "${ARTIFACTS_DIR}"
     echo "Posting skip comment to PR #${CHANGE_ID}..."
     curl --fail --silent --show-error \
         -u "${API_USERNAME}:${API_PASSWORD}" \

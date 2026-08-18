@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { once } from 'node:events';
@@ -96,6 +96,7 @@ describe('agent preload', () => {
             expect(output.stdout().indexOf('Parasoft JavaScript runtime coverage agent started on port 8050'))
                 .toBeLessThan(output.stdout().indexOf('UTA_SERVER_ENTERED'));
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
+            expect(output.stdout()).toContain('Initializing Parasoft JavaScript runtime coverage agent');
 
             const deadline = Date.now() + 5_000;
             let response: Response | undefined;
@@ -108,6 +109,30 @@ describe('agent preload', () => {
             }
             expect(response?.status).toBe(200);
             expect(await response?.json()).toEqual({ status: 'ok', temporary: true });
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
+    it('writes debug startup diagnostics to the Jtest-style log file', async () => {
+        const app = spawnPreloadedApp(
+            'uta-server-sigint.js',
+            ['--target-option', 'target-value'],
+            (_isolatedRoot, runtimeData) => ['--jscov.agent.runtimeData', runtimeData, '--jscov.agent.debug=true']
+        );
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            expect(await waitForExit(output.closed)).toBe(0);
+
+            const runtimeData = join(app.isolatedRoot, 'runtime-data');
+            const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-000001-\d{10}\.log$/.test(file));
+            expect(logFile).toBeDefined();
+            const fileContents = readFileSync(join(runtimeData, logFile), 'utf8');
+            expect(fileContents).toContain('[JSCOV-AGENT][DEBUG]');
+            expect(fileContents).toContain('AUT arguments: ["--target-option","target-value"]');
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);
@@ -127,14 +152,13 @@ describe('agent preload', () => {
         }
     }, 10_000);
 
-    it('reports missing runtime data without preventing the target from running', async () => {
+    it('reports missing runtime data without emitting diagnostics to the console', async () => {
         const app = spawnPreloadedApp('uta-server.js', [], () => ['--jscov.agent.debug=true']);
         const output = collectOutput(app.child);
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
-            expect(output.stdout()).toContain('[JSCOV-AGENT][DEBUG]: Agent parameter: debug=true (ARGS)');
-            expect(output.stdout()).toContain('[JSCOV-AGENT][DEBUG]: Parameter "runtimeData" has not been set.');
+            expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
             expect(output.stderr()).toContain('[JSCOV-AGENT][ERROR]: Agent runtime data directory was not set - parameter "jscov.agent.runtimeData" is missing!');
         } finally {
             await terminate(app.child, output.closed);
@@ -158,21 +182,20 @@ describe('agent preload', () => {
         }
     }, 10_000);
 
-    it('logs invalid optional argument values before using their defaults', async () => {
+    it('does not emit debug diagnostics to the console', async () => {
         const app = spawnPreloadedApp('uta-server.js', ['--jscov.agent.restServerPort=not-a-number', '--jscov.agent.debug=true']);
         const output = collectOutput(app.child);
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
-            expect(output.stdout()).toContain('[JSCOV-AGENT][DEBUG]: Agent parameter: restServerPort=not-a-number (ARGS)');
-            expect(output.stdout()).toContain('[JSCOV-AGENT][DEBUG]: Parameter "restServerPort" has an invalid value "not-a-number". Default value "8050" will be used.');
+            expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);
         }
     }, 10_000);
 
-    it('logs the final AUT arguments when debug is enabled', async () => {
+    it('does not emit AUT debug arguments to the console', async () => {
         const app = spawnPreloadedApp(
             'uta-server.js',
             ['--target-option', 'target-value'],
@@ -182,7 +205,7 @@ describe('agent preload', () => {
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
-            expect(output.stdout()).toContain('[JSCOV-AGENT][DEBUG]: AUT arguments: ["--target-option","target-value"]');
+            expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);
@@ -195,9 +218,15 @@ describe('agent preload', () => {
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
-            await waitForOutput(output.stderr, output.stdout, '[JSCOV-AGENT][ERROR]: Parasoft JavaScript runtime coverage agent startup failed:');
-            expect(output.stderr()).toContain('[JSCOV-AGENT][ERROR]: Parasoft JavaScript runtime coverage agent startup failed:');
-            expect(output.stdout()).not.toContain('[JSCOV-AGENT][ERROR]:');
+            await waitForOutput(output.stdout, output.stderr, '[JSCOV-AGENT][ERROR]: Parasoft JavaScript runtime coverage agent startup failed:');
+            expect(output.stdout()).toContain('[JSCOV-AGENT][ERROR]: Parasoft JavaScript runtime coverage agent startup failed:');
+            expect(output.stderr()).not.toContain('[JSCOV-AGENT][ERROR]:');
+            const runtimeData = join(app.isolatedRoot, 'runtime-data');
+            const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-000001-\d{10}\.log$/.test(file));
+            expect(logFile).toBeDefined();
+            const logContents = readFileSync(join(runtimeData, logFile), 'utf8');
+            expect(logContents).toContain('Parasoft JavaScript runtime coverage agent startup failed:');
+            expect(logContents).toMatch(/\n(?:Error|RangeError|TypeError)[^\r\n]*\r?\n\s+at /);
             await expect(waitForExit(output.closed)).rejects.toThrow('Timed out waiting for the preload process to exit');
         } finally {
             await terminate(app.child, output.closed);

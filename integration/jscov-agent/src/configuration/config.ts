@@ -1,11 +1,13 @@
 import { mkdirSync, statSync } from 'node:fs';
 import parse from 'yargs-parser';
+import { errorMessage } from '../utils.js';
 
 const DEFAULT_CONFIG = {
     sessionAutostart: true,
     restServerEnabled: true,
     restServerPort: 8050,
-    debug: false
+    debug: false,
+    silentMode: false
 };
 
 export interface AgentConfigInput {
@@ -15,6 +17,7 @@ export interface AgentConfigInput {
     restServerEnabled?: unknown;
     restServerPort?: unknown;
     debug?: unknown;
+    silentMode?: unknown;
 }
 
 export interface AgentConfig {
@@ -24,6 +27,7 @@ export interface AgentConfig {
     restServerEnabled: boolean;
     restServerPort: number;
     debug: boolean;
+    silentMode: boolean;
 }
 
 export type ParameterSource = 'ARGS' | 'SETTINGS_FILE';
@@ -73,7 +77,8 @@ const configurations: readonly ConfigurationDefinition[] = [
     { field: 'sessionAutostart', name: 'jscov.agent.session.autostart', kind: 'boolean', setBareBoolean: (input) => { input.sessionAutostart = true; } },
     { field: 'restServerEnabled', name: 'jscov.agent.restServerEnabled', kind: 'boolean', setBareBoolean: (input) => { input.restServerEnabled = true; } },
     { field: 'restServerPort', name: 'jscov.agent.restServerPort', kind: 'value' },
-    { field: 'debug', name: 'jscov.agent.debug', kind: 'boolean', setBareBoolean: (input) => { input.debug = true; } }
+    { field: 'debug', name: 'jscov.agent.debug', kind: 'boolean', setBareBoolean: (input) => { input.debug = true; } },
+    { field: 'silentMode', name: 'jscov.agent.silentMode', kind: 'boolean', setBareBoolean: (input) => { input.silentMode = true; } }
 ];
 
 const configurationByName = new Map(configurations.map((configuration) => [configuration.name, configuration]));
@@ -109,7 +114,8 @@ export function resolveConfiguration(inputs: readonly ConfigurationInput[]): Con
                 sessionAutostart: resolveBoolean(values.sessionAutostart?.value, DEFAULT_CONFIG.sessionAutostart),
                 restServerEnabled: resolveBoolean(values.restServerEnabled?.value, DEFAULT_CONFIG.restServerEnabled),
                 restServerPort: resolvePort(values.restServerPort?.value),
-                debug
+                debug,
+                silentMode: resolveBoolean(values.silentMode?.value, DEFAULT_CONFIG.silentMode)
             },
             diagnostics,
             error: undefined
@@ -118,7 +124,7 @@ export function resolveConfiguration(inputs: readonly ConfigurationInput[]): Con
         return {
             config: undefined,
             diagnostics,
-            error: error instanceof Error ? error.message : String(error)
+            error: errorMessage(error)
         };
     }
 }

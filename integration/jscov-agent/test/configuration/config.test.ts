@@ -25,7 +25,7 @@ describe('configuration', () => {
         temporaryRoots.push(root);
         const runtimeData = join(root, 'runtime-data');
         expect(resolveArguments(['--jscov.agent.runtimeData', runtimeData])).toMatchObject({
-            settings: undefined, runtimeData, sessionAutostart: true, restServerEnabled: true, restServerPort: 8050, debug: false
+            settings: undefined, runtimeData, sessionAutostart: true, restServerEnabled: true, restServerPort: 8050, debug: false, silentMode: false
         });
         expect(existsSync(runtimeData)).toBe(true);
     });
@@ -42,6 +42,17 @@ describe('configuration', () => {
             '--jscov.agent.restServerPort=9010', '--jscov.agent.debug=true'
         ])).toMatchObject({ settings, runtimeData, sessionAutostart: false, restServerEnabled: false, restServerPort: 9010, debug: true });
         expect(resolveArguments(['--jscov.agent.runtimeData', runtimeData, '--jscov.agent.restServerPort=not-a-number'])).toMatchObject({ restServerPort: 8050 });
+    });
+
+    it('parses silentMode and defaults it to false', () => {
+        const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
+        temporaryRoots.push(root);
+        const runtimeData = join(root, 'runtime-data');
+        expect(resolveArguments(['--jscov.agent.runtimeData', runtimeData])).toMatchObject({ silentMode: false });
+        expect(resolveArguments(['--jscov.agent.runtimeData', runtimeData, '--jscov.agent.silentMode=true'])).toMatchObject({ silentMode: true });
+        expect(resolveArguments(['--jscov.agent.runtimeData', runtimeData, '--jscov.agent.silentMode'])).toMatchObject({ silentMode: true });
+        expect(parseCommandLine(['--jscov.agent.silentMode', '--target-option']).input).toMatchObject({ silentMode: true });
+        expect(parseCommandLine(['--jscov.agent.silentMode', '--target-option']).targetArgs).toEqual(['--target-option']);
     });
 
     it('rejects invalid required paths and ignores invalid reusable input values', () => {
@@ -98,7 +109,8 @@ describe('configuration', () => {
                 sessionAutostart: false,
                 restServerEnabled: true,
                 restServerPort: 8050,
-                debug: true
+                debug: true,
+                silentMode: false
             },
             error: undefined,
             diagnostics: [

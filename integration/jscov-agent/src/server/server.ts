@@ -1,6 +1,7 @@
 import express, { type Express } from 'express';
 import type { Server } from 'node:http';
 import type { AgentConfig } from '../configuration/config.js';
+import { LoggerProvider } from '../logging/logger.js';
 import { routes } from './routes.js';
 
 export interface StartedAgent {
@@ -14,7 +15,9 @@ export async function startAgent(config: AgentConfig): Promise<StartedAgent> {
     }
 
     const server = await listen(app, config.restServerPort);
-    console.log(`Parasoft JavaScript runtime coverage agent started on port ${config.restServerPort}`);
+    const message = `Parasoft JavaScript runtime coverage agent started on port ${config.restServerPort}`;
+    LoggerProvider.file.info(message);
+    LoggerProvider.console.info(message);
 
     return {
         close() {

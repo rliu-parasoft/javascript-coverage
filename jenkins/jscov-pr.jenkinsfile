@@ -197,9 +197,9 @@ pipeline {
             script {
                 if (env.PR_BUILD_RESULT != 'SKIPPED') {
                     env.PR_BUILD_RESULT = currentBuild.currentResult ?: 'SUCCESS'
+                    sh 'bash jenkins/scripts/build-summary.sh'
                 }
             }
-            sh 'bash jenkins/scripts/build-summary.sh'
             withCredentials([
                 usernamePassword(credentialsId: 'jscov-bitbucket-pr-bot', usernameVariable: 'API_USERNAME', passwordVariable: 'API_PASSWORD')
             ]) {

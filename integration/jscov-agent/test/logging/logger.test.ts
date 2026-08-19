@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../../src/i18n.js';
 import { LoggerProvider } from '../../src/logging/logger.js';
 
 interface WinstonConsole extends Console {
@@ -169,7 +170,7 @@ describe('LoggerProvider', () => {
             if (silentMode) {
                 expect(output).toBe('');
             } else {
-                expect(output).toContain('Initializing Parasoft JavaScript runtime coverage agent\n');
+                expect(output).toContain(`${i18n.t('agent_initializing')}\n`);
                 expect(output).toContain('[JSCOV-AGENT][INFO]: console info');
                 expect(output).toContain('[JSCOV-AGENT][WARN]: console warn');
                 expect(output).toContain('[JSCOV-AGENT][ERROR]: console error');
@@ -209,7 +210,7 @@ describe('LoggerProvider', () => {
         try {
             LoggerProvider.initialize(makeConfig(runtimeData, { silentMode: false }));
             LoggerProvider.writeBanner();
-            expect(writes.join('')).toContain('Initializing Parasoft JavaScript runtime coverage agent\n');
+            expect(writes.join('')).toContain(`${i18n.t('agent_initializing')}\n`);
         } finally {
             spy.mockRestore();
         }
@@ -221,7 +222,7 @@ describe('LoggerProvider', () => {
         try {
             LoggerProvider.initialize(makeConfig(runtimeData, { silentMode: true }));
             LoggerProvider.writeBanner();
-            expect(writes.join('')).not.toContain('Initializing Parasoft JavaScript runtime coverage agent');
+            expect(writes.join('')).not.toContain(i18n.t('agent_initializing'));
         } finally {
             spy.mockRestore();
         }

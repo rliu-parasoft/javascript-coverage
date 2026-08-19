@@ -1,6 +1,6 @@
 const http = require('node:http');
 
-console.log('UTA_SERVER_ENTERED');
+console.log('AUT_SERVER_ENTERED');
 
 function emitSignalsAfterAgentStarts() {
     const request = http.get({

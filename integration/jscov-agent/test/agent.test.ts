@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { once } from 'node:events';
 import { describe, expect, it } from 'vitest';
+import i18n from '../src/i18n.js';
 
 const moduleRoot = resolve(import.meta.dirname, '..');
 const statusUrl = 'http://127.0.0.1:8050/status';
@@ -106,10 +107,10 @@ describe('agent preload', () => {
         try {
             await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
             await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ARGS:["--target-option","target-value"]');
-            expect(output.stdout().indexOf('Parasoft JavaScript runtime coverage agent started on port 8050'))
+            expect(output.stdout().indexOf(i18n.t('agent_started', { port: 8050 })))
                 .toBeLessThan(output.stdout().indexOf('UTA_SERVER_ENTERED'));
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
-            expect(output.stdout()).toContain('Initializing Parasoft JavaScript runtime coverage agent');
+            expect(output.stdout()).toContain(i18n.t('agent_initializing'));
 
             const deadline = Date.now() + 5_000;
             let response: Response | undefined;
@@ -172,7 +173,7 @@ describe('agent preload', () => {
         try {
             await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
-            expect(output.stderr()).toContain('[JSCOV-AGENT][ERROR]: Agent runtime data directory was not set - parameter "jscov.agent.runtimeData" is missing!');
+            expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: ${i18n.t('runtime_data_missing')}`);
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);
@@ -188,7 +189,7 @@ describe('agent preload', () => {
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
-            expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: Value of 'settings' configuration should point to file but points incorrectly to directory: ${app.isolatedRoot}`);
+            expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: ${i18n.t('settings_must_be_file', { path: app.isolatedRoot })}`);
             expect(output.stdout()).not.toContain('Parasoft JavaScript runtime coverage agent started on port');
         } finally {
             await terminate(app.child, output.closed);
@@ -374,14 +375,15 @@ describe('agent preload', () => {
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
-            await waitForOutput(output.stdout, output.stderr, '[JSCOV-AGENT][ERROR]: Parasoft JavaScript runtime coverage agent startup failed:');
-            expect(output.stdout()).toContain('[JSCOV-AGENT][ERROR]: Parasoft JavaScript runtime coverage agent startup failed:');
+            const startupFailure = i18n.t('agent_startup_failed');
+            await waitForOutput(output.stdout, output.stderr, `[JSCOV-AGENT][ERROR]: ${startupFailure}`);
+            expect(output.stdout()).toContain(`[JSCOV-AGENT][ERROR]: ${startupFailure}`);
             expect(output.stderr()).not.toContain('[JSCOV-AGENT][ERROR]:');
             const runtimeData = join(app.isolatedRoot, 'runtime-data');
             const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-000001-\d{10}\.log$/.test(file));
             expect(logFile).toBeDefined();
             const logContents = readFileSync(join(runtimeData, logFile), 'utf8');
-            expect(logContents).toContain('Parasoft JavaScript runtime coverage agent startup failed:');
+            expect(logContents).toContain(startupFailure);
             expect(logContents).toMatch(/\n(?:Error|RangeError|TypeError)[^\r\n]*\r?\n\s+at /);
             await expect(waitForExit(output.closed)).rejects.toThrow('Timed out waiting for the preload process to exit');
         } finally {
@@ -397,7 +399,7 @@ describe('agent preload', () => {
         try {
             await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
             expect(await waitForExit(output.closed)).toBe(0);
-            expect(output.stderr()).not.toContain('Parasoft JavaScript runtime coverage agent shutdown failed:');
+            expect(output.stderr()).not.toContain(i18n.t('agent_shutdown_failed'));
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);

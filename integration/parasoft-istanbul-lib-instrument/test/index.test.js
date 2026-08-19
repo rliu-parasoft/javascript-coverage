@@ -1,5 +1,7 @@
 /* globals describe, it */
 const { assert } = require('chai');
+const i18n = require('../src/i18n');
+const { name, version } = require('../package.json');
 
 function loadIndex() {
     delete require.cache[require.resolve('../src/index')];
@@ -74,8 +76,6 @@ describe('instrumenter', () => {
             }
         }
 
-        assert.deepEqual(notices, [
-            '[parasoft-istanbul-lib-instrument] loaded version 6.0.3-1'
-        ]);
+        assert.deepEqual(notices, [i18n.t('load_notice', { name, version })]);
     });
 });

@@ -1,0 +1,7 @@
+{
+    "load_notice": "[{{name}}] 已加载版本 {{version}}",
+    "coverage_remap_failed": "[WARNING] 无法重新映射 {{path}} 的覆盖率：{{reason}}",
+    "coverage_skip_written": "跳过已写入的 {{path}} 覆盖率",
+    "static_coverage_write": "正在将 {{path}} 的静态覆盖率写入 {{output}}",
+    "package_name_read_failed": "[WARNING] 无法读取 {{path}} 中的 name 属性：{{reason}}"
+}

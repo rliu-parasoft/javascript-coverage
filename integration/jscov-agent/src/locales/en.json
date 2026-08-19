@@ -1,0 +1,14 @@
+{
+    "agent_initializing": "Initializing Parasoft JavaScript runtime coverage agent",
+    "agent_startup_failed": "Parasoft JavaScript runtime coverage agent startup failed:",
+    "agent_shutdown_failed": "Parasoft JavaScript runtime coverage agent shutdown failed:",
+    "agent_started": "Parasoft JavaScript runtime coverage agent started on port {{port}}",
+    "settings_file_does_not_exist": "Agent settings file does not exist: {{path}}",
+    "settings_must_be_file": "Value of 'settings' configuration should point to file but points incorrectly to directory: {{path}}",
+    "settings_file_cannot_be_read": "Agent settings file cannot be read: {{path}}",
+    "settings_file_invalid_jsonc": "Agent settings file contains invalid JSONC: {{path}}",
+    "settings_file_not_json_object": "Agent settings file does not contain a JSON object: {{path}}",
+    "runtime_data_missing": "Agent runtime data directory was not set - parameter 'jscov.agent.runtimeData' is missing!",
+    "runtime_data_not_directory": "Agent runtime data configuration is not a directory: {{path}}",
+    "runtime_data_cannot_be_created": "Agent runtime data directory: {{path}} cannot be created."
+}

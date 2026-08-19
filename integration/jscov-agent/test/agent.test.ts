@@ -101,7 +101,14 @@ async function waitForExit(closed: Promise<unknown[]>): Promise<number | null> {
 
 describe('agent preload', () => {
     it('preloads for the runtime command and exposes temporary status', async () => {
-        const app = spawnPreloadedApp('aut-server.js', ['--target-option', 'target-value']);
+        const app = spawnPreloadedApp(
+            'aut-server.js',
+            ['--target-option', 'target-value'],
+            (_isolatedRoot, runtimeData) => [
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.restServerEnabled=true'
+            ]
+        );
         const output = collectOutput(app.child);
 
         try {
@@ -129,11 +136,28 @@ describe('agent preload', () => {
         }
     }, 10_000);
 
+    it('starts the REST server by default', async () => {
+        const app = spawnPreloadedApp();
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            expect(output.stdout()).toContain(i18n.t('agent_started', { port: 8050 }));
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
     it('writes debug startup diagnostics to the Jtest-style log file', async () => {
         const app = spawnPreloadedApp(
             'aut-server-sigint.js',
             ['--target-option', 'target-value'],
-            (_isolatedRoot, runtimeData) => ['--jscov.agent.runtimeData', runtimeData, '--jscov.agent.debug=true']
+            (_isolatedRoot, runtimeData) => [
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.debug=true',
+                '--jscov.agent.restServerEnabled=true'
+            ]
         );
         const output = collectOutput(app.child);
 
@@ -154,7 +178,14 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('closes the agent and exits successfully when it receives SIGINT', async () => {
-        const app = spawnPreloadedApp('aut-server-sigint.js');
+        const app = spawnPreloadedApp(
+            'aut-server-sigint.js',
+            [],
+            (_isolatedRoot, runtimeData) => [
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.restServerEnabled=true'
+            ]
+        );
         const output = collectOutput(app.child);
 
         try {
@@ -218,7 +249,7 @@ describe('agent preload', () => {
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
-            expect(output.stdout()).toContain(i18n.t('agent_started', { port: 8050 }));
+            expect(output.stdout()).not.toContain(i18n.t('agent_started', { port: 8050 }));
 
             const runtimeData = join(app.isolatedRoot, 'runtime-data');
             const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-000001-\d{10}\.log$/.test(file));
@@ -370,12 +401,15 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('logs an agent server startup error without preventing the AUT from running', async () => {
-        const app = spawnPreloadedApp('aut-server.js', ['--jscov.agent.restServerPort=-1']);
+        const app = spawnPreloadedApp('aut-server.js', [
+            '--jscov.agent.restServerEnabled=true',
+            '--jscov.agent.restServerPort=-1'
+        ]);
         const output = collectOutput(app.child);
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
-            const startupFailure = i18n.t('agent_startup_failed');
+            const startupFailure = i18n.t('agent_rest_service_start_failed', { detail: '' }).trimEnd();
             await waitForOutput(output.stdout, output.stderr, `[JSCOV-AGENT][ERROR]: ${startupFailure}`);
             expect(output.stdout()).toContain(`[JSCOV-AGENT][ERROR]: ${startupFailure}`);
             expect(output.stderr()).not.toContain('[JSCOV-AGENT][ERROR]:');
@@ -393,7 +427,14 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('closes the agent only once when it receives multiple signals', async () => {
-        const app = spawnPreloadedApp('aut-server-multiple-signals.js');
+        const app = spawnPreloadedApp(
+            'aut-server-multiple-signals.js',
+            [],
+            (_isolatedRoot, runtimeData) => [
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.restServerEnabled=true'
+            ]
+        );
         const output = collectOutput(app.child);
 
         try {

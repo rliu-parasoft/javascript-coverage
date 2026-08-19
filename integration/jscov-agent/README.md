@@ -3,13 +3,13 @@
 Temporary Node.js agent for JavaScript runtime coverage. It is preloaded alongside the application under test:
 
 ```powershell
-node --import .\agent.js uta-server.js
+node --import .\agent.js aut-server.js
 ```
 
 When the agent is outside the current directory on Windows, pass its absolute path as a `file:///` URL. `--import` uses ESM resolution and rejects a bare drive-letter path such as `E:\path\agent.js`:
 
 ```powershell
-node --import file:///E:/path/to/agent.js uta-server.js
+node --import file:///E:/path/to/agent.js aut-server.js
 ```
 
 The agent listens on port `8050`. 
@@ -21,7 +21,7 @@ The agent accepts parameters via command-line arguments and an optional JSONC se
 ### Command-line arguments
 
 ```powershell
-node --import .\agent.js uta-server.js ^
+node --import .\agent.js aut-server.js ^
   --jscov.agent.runtimeData ./runtime-data ^
   --jscov.agent.settings ./agent.jsonc ^
   --jscov.agent.session.autostart=false ^

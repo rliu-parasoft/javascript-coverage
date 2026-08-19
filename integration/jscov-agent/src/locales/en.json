@@ -3,6 +3,8 @@
     "agent_startup_failed": "Parasoft JavaScript runtime coverage agent startup failed:",
     "agent_shutdown_failed": "Parasoft JavaScript runtime coverage agent shutdown failed:",
     "agent_started": "Parasoft JavaScript runtime coverage agent started on port {{port}}",
+    "agent_rest_service_start_failed": "Failed to start service: {{detail}}",
+    "agent_rest_port_unavailable": "port {{port}} is unavailable.",
     "settings_file_does_not_exist": "Agent settings file does not exist: {{path}}",
     "settings_must_be_file": "Value of 'settings' configuration should point to file but points incorrectly to directory: {{path}}",
     "settings_file_cannot_be_read": "Agent settings file cannot be read: {{path}}",

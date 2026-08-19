@@ -1,7 +1,7 @@
 import { parseCommandLine, readSettingsFile, resolveConfiguration, type AgentConfig } from './configuration/config.js';
 import { LoggerProvider } from './logging/logger.js';
 import i18n from './i18n.js';
-import { startAgent, type StartedAgent } from './server/server.js';
+import { RestServiceStartupError, startAgent, type StartedAgent } from './server/server.js';
 import { errorMessage } from './utils.js';
 
 const config = resolveAgentConfiguration();
@@ -48,8 +48,21 @@ async function startAgentWithLifecycle(config: AgentConfig): Promise<void> {
     try {
         registerShutdownHandlers(await startAgent(config));
     } catch (error) {
-        logLifecycleFailure('startup', error);
+        if (error instanceof RestServiceStartupError) {
+            logRestServiceStartupFailure(error);
+        } else {
+            logLifecycleFailure('startup', error);
+        }
         await LoggerProvider.close();
+    }
+}
+
+function logRestServiceStartupFailure(error: RestServiceStartupError): void {
+    LoggerProvider.console.error(error.message);
+    if (error.underlyingError instanceof Error) {
+        LoggerProvider.file.error(error.message, error.underlyingError);
+    } else {
+        LoggerProvider.file.error(error.message);
     }
 }
 

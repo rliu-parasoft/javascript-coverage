@@ -99,7 +99,7 @@ describe('configuration', () => {
 
         const result = readSettingsFile(missingSettings);
         expect(result.input).toEqual({});
-        expect(result.error).toBe(`Agent settings file does not exist: ${missingSettings}`);
+        expect(result.error).toBe(i18n.t('settings_file_does_not_exist', { path: missingSettings }));
     });
 
     it('returns an error when a settings path points to a directory', () => {
@@ -108,7 +108,7 @@ describe('configuration', () => {
 
         const result = readSettingsFile(root);
         expect(result.input).toEqual({});
-        expect(result.error).toBe(`Value of 'settings' configuration should point to file but points incorrectly to directory: ${root}`);
+        expect(result.error).toBe(i18n.t('settings_must_be_file', { path: root }));
     });
 
     it('returns an error when settings file contains a top-level array', () => {

@@ -17,7 +17,7 @@ interface PreloadedApp {
 type AgentArgsFactory = (isolatedRoot: string, runtimeData: string) => string[];
 
 function spawnPreloadedApp(
-    utaFixture = 'uta-server.js',
+    autFixture = 'aut-server.js',
     applicationArgs: string[] = [],
     createAgentArgs: AgentArgsFactory = (_isolatedRoot, runtimeData) => ['--jscov.agent.runtimeData', runtimeData],
     preloadModule = 'agent.js'
@@ -26,13 +26,13 @@ function spawnPreloadedApp(
     const runtimeData = join(isolatedRoot, 'runtime-data');
     const agentArgs = createAgentArgs(isolatedRoot, runtimeData);
     copyFileSync(resolve(moduleRoot, 'dist/agent.js'), join(isolatedRoot, 'agent.js'));
-    copyFileSync(resolve(moduleRoot, `test/fixtures/${utaFixture}`), join(isolatedRoot, 'uta-server.js'));
+    copyFileSync(resolve(moduleRoot, `test/fixtures/${autFixture}`), join(isolatedRoot, 'aut-server.js'));
 
     return {
         isolatedRoot,
         child: spawn(process.execPath, [
             '--import', `./${preloadModule}`,
-            'uta-server.js',
+            'aut-server.js',
             ...agentArgs,
             ...applicationArgs
         ], {
@@ -101,14 +101,14 @@ async function waitForExit(closed: Promise<unknown[]>): Promise<number | null> {
 
 describe('agent preload', () => {
     it('preloads for the runtime command and exposes temporary status', async () => {
-        const app = spawnPreloadedApp('uta-server.js', ['--target-option', 'target-value']);
+        const app = spawnPreloadedApp('aut-server.js', ['--target-option', 'target-value']);
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ARGS:["--target-option","target-value"]');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ARGS:["--target-option","target-value"]');
             expect(output.stdout().indexOf(i18n.t('agent_started', { port: 8050 })))
-                .toBeLessThan(output.stdout().indexOf('UTA_SERVER_ENTERED'));
+                .toBeLessThan(output.stdout().indexOf('AUT_SERVER_ENTERED'));
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
             expect(output.stdout()).toContain(i18n.t('agent_initializing'));
 
@@ -131,14 +131,14 @@ describe('agent preload', () => {
 
     it('writes debug startup diagnostics to the Jtest-style log file', async () => {
         const app = spawnPreloadedApp(
-            'uta-server-sigint.js',
+            'aut-server-sigint.js',
             ['--target-option', 'target-value'],
             (_isolatedRoot, runtimeData) => ['--jscov.agent.runtimeData', runtimeData, '--jscov.agent.debug=true']
         );
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
             expect(await waitForExit(output.closed)).toBe(0);
 
             const runtimeData = join(app.isolatedRoot, 'runtime-data');
@@ -154,11 +154,11 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('closes the agent and exits successfully when it receives SIGINT', async () => {
-        const app = spawnPreloadedApp('uta-server-sigint.js');
+        const app = spawnPreloadedApp('aut-server-sigint.js');
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
             expect(await waitForExit(output.closed)).toBe(0);
         } finally {
             await terminate(app.child, output.closed);
@@ -167,11 +167,11 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('reports missing runtime data without emitting diagnostics to the console', async () => {
-        const app = spawnPreloadedApp('uta-server.js', [], () => ['--jscov.agent.debug=true']);
+        const app = spawnPreloadedApp('aut-server.js', [], () => ['--jscov.agent.debug=true']);
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
             expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: ${i18n.t('runtime_data_missing')}`);
         } finally {
@@ -181,16 +181,16 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('reports an invalid settings directory without preventing the target from running', async () => {
-        const app = spawnPreloadedApp('uta-server.js', [], (isolatedRoot, runtimeData) => [
+        const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot, runtimeData) => [
             '--jscov.agent.runtimeData', runtimeData,
             '--jscov.agent.settings', isolatedRoot
         ]);
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
             expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: ${i18n.t('settings_must_be_file', { path: app.isolatedRoot })}`);
-            expect(output.stdout()).not.toContain('Parasoft JavaScript runtime coverage agent started on port');
+            expect(output.stdout()).not.toContain(i18n.t('agent_started', { port: 8050 }));
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);
@@ -198,7 +198,7 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('reads JSONC settings and gives CLI values precedence', async () => {
-        const app = spawnPreloadedApp('uta-server.js', [], (isolatedRoot, runtimeData) => {
+        const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot, runtimeData) => {
             const settings = join(isolatedRoot, 'agent.jsonc');
             writeFileSync(settings, `{
                 // Values from the file are tagged as SETTINGS_FILE.
@@ -217,8 +217,8 @@ describe('agent preload', () => {
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
-            expect(output.stdout()).toContain('Parasoft JavaScript runtime coverage agent started on port 8050');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            expect(output.stdout()).toContain(i18n.t('agent_started', { port: 8050 }));
 
             const runtimeData = join(app.isolatedRoot, 'runtime-data');
             const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-000001-\d{10}\.log$/.test(file));
@@ -236,7 +236,7 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('uses runtimeData from settings file when not provided on command line', async () => {
-        const app = spawnPreloadedApp('uta-server.js', [], (isolatedRoot) => {
+        const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot) => {
             const runtimeData = join(isolatedRoot, 'runtime-data');
             const settings = join(isolatedRoot, 'agent.jsonc');
             writeFileSync(settings, JSON.stringify({
@@ -248,8 +248,8 @@ describe('agent preload', () => {
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
-            expect(output.stdout()).toContain('Parasoft JavaScript runtime coverage agent started on port 8050');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            expect(output.stdout()).toContain(i18n.t('agent_started', { port: 8050 }));
 
             const runtimeData = join(app.isolatedRoot, 'runtime-data');
             const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-000001-\d{10}\.log$/.test(file));
@@ -264,7 +264,7 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('reports malformed JSONC settings without preventing the target from running', async () => {
-        const app = spawnPreloadedApp('uta-server.js', [], (isolatedRoot, runtimeData) => {
+        const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot, runtimeData) => {
             const settings = join(isolatedRoot, 'agent.jsonc');
             writeFileSync(settings, '{ "jscov.agent.debug": }');
             return [
@@ -275,9 +275,9 @@ describe('agent preload', () => {
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
-            expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: Agent settings file contains invalid JSONC: ${join(app.isolatedRoot, 'agent.jsonc')}`);
-            expect(output.stdout()).not.toContain('Parasoft JavaScript runtime coverage agent started on port');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: ${i18n.t('settings_file_invalid_jsonc', { path: join(app.isolatedRoot, 'agent.jsonc') })}`);
+            expect(output.stdout()).not.toContain(i18n.t('agent_started', { port: 8050 }));
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);
@@ -285,7 +285,7 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('reports unreadable settings without preventing the target from running', async () => {
-        const app = spawnPreloadedApp('uta-server.js', [], (isolatedRoot, runtimeData) => {
+        const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot, runtimeData) => {
             const settings = join(isolatedRoot, 'agent.jsonc');
             writeFileSync(settings, '{}');
             writeFileSync(join(isolatedRoot, 'unreadable-agent.js'), `
@@ -310,9 +310,9 @@ describe('agent preload', () => {
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
-            expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: Agent settings file cannot be read: ${join(app.isolatedRoot, 'agent.jsonc')}`);
-            expect(output.stdout()).not.toContain('Parasoft JavaScript runtime coverage agent started on port');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: ${i18n.t('settings_file_cannot_be_read', { path: join(app.isolatedRoot, 'agent.jsonc') })}`);
+            expect(output.stdout()).not.toContain(i18n.t('agent_started', { port: 8050 }));
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);
@@ -320,7 +320,7 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('reports non-existent settings without preventing the target from running', async () => {
-        const app = spawnPreloadedApp('uta-server.js', [], (isolatedRoot, runtimeData) => {
+        const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot, runtimeData) => {
             const missingSettings = join(isolatedRoot, 'nonexistent.jsonc');
             return [
                 '--jscov.agent.settings', missingSettings,
@@ -330,9 +330,9 @@ describe('agent preload', () => {
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
-            expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: Agent settings file does not exist: ${join(app.isolatedRoot, 'nonexistent.jsonc')}`);
-            expect(output.stdout()).not.toContain('Parasoft JavaScript runtime coverage agent started on port');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: ${i18n.t('settings_file_does_not_exist', { path: join(app.isolatedRoot, 'nonexistent.jsonc') })}`);
+            expect(output.stdout()).not.toContain(i18n.t('agent_started', { port: 8050 }));
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);
@@ -340,11 +340,11 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('does not emit debug diagnostics to the console', async () => {
-        const app = spawnPreloadedApp('uta-server.js', ['--jscov.agent.restServerPort=not-a-number', '--jscov.agent.debug=true']);
+        const app = spawnPreloadedApp('aut-server.js', ['--jscov.agent.restServerPort=not-a-number', '--jscov.agent.debug=true']);
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
         } finally {
             await terminate(app.child, output.closed);
@@ -354,14 +354,14 @@ describe('agent preload', () => {
 
     it('does not emit AUT debug arguments to the console', async () => {
         const app = spawnPreloadedApp(
-            'uta-server.js',
+            'aut-server.js',
             ['--target-option', 'target-value'],
             (_isolatedRoot, runtimeData) => ['--jscov.agent.runtimeData', runtimeData, '--jscov.agent.debug=true']
         );
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
         } finally {
             await terminate(app.child, output.closed);
@@ -369,12 +369,12 @@ describe('agent preload', () => {
         }
     }, 10_000);
 
-    it('logs an agent server startup error without preventing the UTA from running', async () => {
-        const app = spawnPreloadedApp('uta-server.js', ['--jscov.agent.restServerPort=-1']);
+    it('logs an agent server startup error without preventing the AUT from running', async () => {
+        const app = spawnPreloadedApp('aut-server.js', ['--jscov.agent.restServerPort=-1']);
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
             const startupFailure = i18n.t('agent_startup_failed');
             await waitForOutput(output.stdout, output.stderr, `[JSCOV-AGENT][ERROR]: ${startupFailure}`);
             expect(output.stdout()).toContain(`[JSCOV-AGENT][ERROR]: ${startupFailure}`);
@@ -393,11 +393,11 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('closes the agent only once when it receives multiple signals', async () => {
-        const app = spawnPreloadedApp('uta-server-multiple-signals.js');
+        const app = spawnPreloadedApp('aut-server-multiple-signals.js');
         const output = collectOutput(app.child);
 
         try {
-            await waitForOutput(output.stdout, output.stderr, 'UTA_SERVER_ENTERED');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
             expect(await waitForExit(output.closed)).toBe(0);
             expect(output.stderr()).not.toContain(i18n.t('agent_shutdown_failed'));
         } finally {

@@ -3,6 +3,7 @@ const { name, version } = require('../package.json');
 const Instrumenter = require('./instrumenter');
 const programVisitor = require('./visitor');
 const readInitialCoverage = require('./read-coverage');
+const i18n = require('./i18n');
 
 const loadNoticeKey = Symbol.for(
     'parasoft.istanbul-lib-instrument.loadNoticeShown'
@@ -14,9 +15,7 @@ function logLoadNotice() {
     }
 
     global[loadNoticeKey] = true;
-    console.info(
-        `[${name}] loaded version ${version}`
-    );
+    console.info(i18n.t('load_notice', { name, version }));
 }
 
 logLoadNotice();

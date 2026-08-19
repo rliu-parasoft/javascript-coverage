@@ -2,6 +2,7 @@ import { closeSync, openSync, readdirSync } from 'node:fs';
 import { randomInt } from 'node:crypto';
 import { join } from 'node:path';
 import type { AgentConfig } from '../configuration/config.js';
+import i18n from '../i18n.js';
 import { createLogger, format, transports, type Logger } from 'winston';
 
 export interface LoggerAdapter {
@@ -95,7 +96,7 @@ export class LoggerProvider {
 
     static writeBanner(): void {
         if (!LoggerProvider.getInstance().silentMode) {
-            process.stdout.write('Initializing Parasoft JavaScript runtime coverage agent\n');
+            process.stdout.write(`${i18n.t('agent_initializing')}\n`);
         }
     }
 

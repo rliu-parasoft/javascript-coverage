@@ -6,6 +6,7 @@ const { TraceMap } = require('@jridgewell/trace-mapping');
 const { SourceMapTransformer } = require('istanbul-lib-source-maps/lib/transformer');
 const { MappedCoverage } = require('istanbul-lib-source-maps/lib/mapped');
 const libCoverage = require('istanbul-lib-coverage');
+const i18n = require('./i18n');
 const debug = require('debug')(name);
 
 let outputDir;
@@ -58,7 +59,10 @@ function remapCoverageData(coverageData) {
             return mappedFiles.map(file => uniqueFiles[file].toJSON());
         }
     } catch (e) {
-        debug('[WARNING] Failed to remap coverage for %s: %s', coverageData.path, e.message);
+        debug(i18n.t('coverage_remap_failed', {
+            path: coverageData.path,
+            reason: e.message
+        }));
     }
 
     return [coverageData];
@@ -78,11 +82,11 @@ function writeStaticCoverage(sourceFilePath, coverageData, projectInfo) {
             );
 
         if (fs.existsSync(outputFile)) {
-            debug('Skipping already written coverage for %s', filePath);
+            debug(i18n.t('coverage_skip_written', { path: filePath }));
             continue;
         }
 
-        debug('Writing static coverage for %s to %s', filePath, outputFile);
+        debug(i18n.t('static_coverage_write', {path: filePath, output: outputFile}));
         fs.writeFileSync(
             outputFile,
             JSON.stringify({

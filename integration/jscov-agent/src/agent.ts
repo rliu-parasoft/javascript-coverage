@@ -1,5 +1,6 @@
 import { parseCommandLine, readSettingsFile, resolveConfiguration, type AgentConfig } from './configuration/config.js';
 import { LoggerProvider } from './logging/logger.js';
+import i18n from './i18n.js';
 import { startAgent, type StartedAgent } from './server/server.js';
 import { errorMessage } from './utils.js';
 
@@ -70,7 +71,7 @@ function registerShutdownHandlers(agent: StartedAgent): void {
 }
 
 function logLifecycleFailure(phase: 'startup' | 'shutdown', error: unknown): void {
-    const baseMessage = `Parasoft JavaScript runtime coverage agent ${phase} failed: `;
+    const baseMessage = i18n.t(`agent_${phase}_failed`);
     const message = `${baseMessage}${errorMessage(error)}`;
     LoggerProvider.console.error(message);
     if (error instanceof Error) {

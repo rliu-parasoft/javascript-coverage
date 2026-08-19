@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../../src/i18n.js';
 import { parseCommandLine, readSettingsFile, resolveConfiguration, type AgentConfig, type AgentConfigInput, type ConfigurationInput } from '../../src/configuration/config.js';
 
 vi.mock('node:fs', { spy: true });
@@ -74,7 +75,7 @@ describe('configuration', () => {
 
         const result = readSettingsFile(settings);
         expect(result.input).toEqual({});
-        expect(result.error).toBe(`Agent settings file contains invalid JSONC: ${settings}`);
+        expect(result.error).toBe(i18n.t('settings_file_invalid_jsonc', { path: settings }));
     });
 
     it('returns an error when a settings file cannot be read', () => {
@@ -88,7 +89,7 @@ describe('configuration', () => {
 
         const result = readSettingsFile(settings);
         expect(result.input).toEqual({});
-        expect(result.error).toBe(`Agent settings file cannot be read: ${settings}`);
+        expect(result.error).toBe(i18n.t('settings_file_cannot_be_read', { path: settings }));
     });
 
     it('returns an error when a settings file does not exist', () => {
@@ -118,7 +119,7 @@ describe('configuration', () => {
 
         const result = readSettingsFile(settings);
         expect(result.input).toEqual({});
-        expect(result.error).toBe(`Agent settings file does not contain a JSON object: ${settings}`);
+        expect(result.error).toBe(i18n.t('settings_file_not_json_object', { path: settings }));
     });
 
     it.each(['"hello"', '42', 'true'])('returns an error when settings file contains a top-level primitive: %s', (content) => {
@@ -129,7 +130,7 @@ describe('configuration', () => {
 
         const result = readSettingsFile(settings);
         expect(result.input).toEqual({});
-        expect(result.error).toBe(`Agent settings file does not contain a JSON object: ${settings}`);
+        expect(result.error).toBe(i18n.t('settings_file_not_json_object', { path: settings }));
     });
 
     it('returns empty input without error for an empty settings file', () => {
@@ -189,25 +190,25 @@ describe('configuration', () => {
     });
 
     it('rejects invalid required paths and ignores invalid reusable input values', () => {
-        expect(() => resolveArguments([])).toThrow('Agent runtime data directory was not set - parameter "jscov.agent.runtimeData" is missing!');
+        expect(() => resolveArguments([])).toThrow(i18n.t('runtime_data_missing'));
         const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
         temporaryRoots.push(root);
         const runtimeData = join(root, 'runtime-data');
         expect(resolveInput({ runtimeData, restServerPort: '9010' } as AgentConfigInput)).toMatchObject({ restServerPort: 9010 });
 
         expect(() => resolveArguments(['--jscov.agent.runtimeData', runtimeData, '--jscov.agent.settings', root]))
-            .toThrow(`Value of 'settings' configuration should point to file but points incorrectly to directory: ${root}`);
+            .toThrow(i18n.t('settings_must_be_file', { path: root }));
         const missingSettings = join(root, 'missing.jsonc');
         expect(() => resolveArguments(['--jscov.agent.runtimeData', runtimeData, '--jscov.agent.settings', missingSettings]))
-            .toThrow(`Agent settings file does not exist: ${missingSettings}`);
+            .toThrow(i18n.t('settings_file_does_not_exist', { path: missingSettings }));
 
         const runtimeFile = join(root, 'runtime-file');
         writeFileSync(runtimeFile, '');
         expect(() => resolveArguments(['--jscov.agent.runtimeData', runtimeFile]))
-            .toThrow(`Agent runtime data configuration is not a directory: ${runtimeFile}`);
+            .toThrow(i18n.t('runtime_data_not_directory', { path: runtimeFile }));
         const blockedRuntimeData = join(runtimeFile, 'runtime-data');
         expect(() => resolveArguments(['--jscov.agent.runtimeData', blockedRuntimeData]))
-            .toThrow(`Agent runtime data directory: ${blockedRuntimeData} cannot be created.`);
+            .toThrow(i18n.t('runtime_data_cannot_be_created', { path: blockedRuntimeData }));
     });
 
     it('strips agent options throughout the command line', () => {

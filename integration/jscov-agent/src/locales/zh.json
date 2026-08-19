@@ -1,0 +1,14 @@
+{
+    "agent_initializing": "正在初始化 Parasoft JavaScript 运行时覆盖率代理",
+    "agent_startup_failed": "Parasoft JavaScript 运行时覆盖率代理启动失败：",
+    "agent_shutdown_failed": "Parasoft JavaScript 运行时覆盖率代理关闭失败：",
+    "agent_started": "Parasoft JavaScript 运行时覆盖率代理已在端口 {{port}} 启动",
+    "settings_file_does_not_exist": "代理设置文件不存在：{{path}}",
+    "settings_must_be_file": "'settings' 配置应指向文件，但错误地指向了目录：{{path}}",
+    "settings_file_cannot_be_read": "无法读取代理设置文件：{{path}}",
+    "settings_file_invalid_jsonc": "代理设置文件包含无效的 JSONC：{{path}}",
+    "settings_file_not_json_object": "代理设置文件不包含 JSON 对象：{{path}}",
+    "runtime_data_missing": "未设置代理运行时数据目录 - 缺少 'jscov.agent.runtimeData' 参数！",
+    "runtime_data_not_directory": "代理运行时数据配置不是目录：{{path}}",
+    "runtime_data_cannot_be_created": "无法创建代理运行时数据目录：{{path}}。"
+}

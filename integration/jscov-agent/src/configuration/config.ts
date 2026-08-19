@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, statSync } from 'node:fs';
 import { parse as parseJsonc, type ParseError } from 'jsonc-parser';
 import parse from 'yargs-parser';
 import { errorMessage } from '../utils.js';
+import i18n from '../i18n.js';
 
 const DEFAULT_CONFIG = {
     sessionAutostart: true,
@@ -122,7 +123,7 @@ export function readSettingsFile(settings: unknown): SettingsFileResult {
     try {
         contents = readFileSync(settingsPath, 'utf8');
     } catch {
-        return { input: {}, error: `Agent settings file cannot be read: ${settingsPath}` };
+        return { input: {}, error: i18n.t('settings_file_cannot_be_read', { path: settingsPath }) };
     }
 
     const errors: ParseError[] = [];
@@ -132,10 +133,10 @@ export function readSettingsFile(settings: unknown): SettingsFileResult {
         return { input: {}, error: undefined };
     }
     if (errors.length > 0) {
-        return { input: {}, error: `Agent settings file contains invalid JSONC: ${settingsPath}` };
+        return { input: {}, error: i18n.t('settings_file_invalid_jsonc', { path: settingsPath }) };
     }
     if (typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return { input: {}, error: `Agent settings file does not contain a JSON object: ${settingsPath}` };
+        return { input: {}, error: i18n.t('settings_file_not_json_object', { path: settingsPath }) };
     }
 
     const values = parsed as Record<string, unknown>;
@@ -318,17 +319,17 @@ function resolveSettings(value: unknown): string | undefined {
     try {
         stats = statSync(path);
     } catch {
-        throw new Error(`Agent settings file does not exist: ${path}`);
+        throw new Error(i18n.t('settings_file_does_not_exist', { path }));
     }
     if (!stats.isFile()) {
-        throw new Error(`Value of 'settings' configuration should point to file but points incorrectly to directory: ${path}`);
+        throw new Error(i18n.t('settings_must_be_file', { path }));
     }
     return path;
 }
 
 function resolveRuntimeData(value: unknown): string {
     if (typeof value !== 'string' || value.trim() === '') {
-        throw new Error('Agent runtime data directory was not set - parameter "jscov.agent.runtimeData" is missing!');
+        throw new Error(i18n.t('runtime_data_missing'));
     }
 
     let stats;
@@ -338,12 +339,12 @@ function resolveRuntimeData(value: unknown): string {
         // Let mkdirSync report whether the path can be created.
     }
     if (stats && !stats.isDirectory()) {
-        throw new Error(`Agent runtime data configuration is not a directory: ${value}`);
+        throw new Error(i18n.t('runtime_data_not_directory', { path: value }));
     }
     try {
         mkdirSync(value, { recursive: true });
     } catch {
-        throw new Error(`Agent runtime data directory: ${value} cannot be created.`);
+        throw new Error(i18n.t('runtime_data_cannot_be_created', { path: value }));
     }
     return value;
 }

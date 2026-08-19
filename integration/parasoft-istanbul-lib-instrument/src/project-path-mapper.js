@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { name } = require('../package.json');
+const i18n = require('./i18n');
 const debug = require('debug')(name);
 
 const knownRoots = [];
@@ -51,7 +52,10 @@ function findPackageJsonRoot(startingDir, workingDir) {
                     root: toPortablePath(currentDir)
                 };
             } catch (err) {
-                debug(`[WARNING] Failed to read name property in ${packageJsonPath}: ${err.message}`);
+                debug(i18n.t('package_name_read_failed', {
+                    path: packageJsonPath,
+                    reason: err.message
+                }));
                 result = {
                     name: 'unknown',
                     root: toPortablePath(currentDir)

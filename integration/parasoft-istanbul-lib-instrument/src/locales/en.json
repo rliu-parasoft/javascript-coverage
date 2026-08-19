@@ -1,0 +1,7 @@
+{
+    "load_notice": "[{{name}}] loaded version {{version}}",
+    "coverage_remap_failed": "[WARNING] Failed to remap coverage for {{path}}: {{reason}}",
+    "coverage_skip_written": "Skipping already written coverage for {{path}}",
+    "static_coverage_write": "Writing static coverage for {{path}} to {{output}}",
+    "package_name_read_failed": "[WARNING] Failed to read name property in {{path}}: {{reason}}"
+}

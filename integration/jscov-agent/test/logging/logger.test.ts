@@ -244,7 +244,7 @@ describe('LoggerProvider', () => {
         await expect(Promise.resolve().then(() => LoggerProvider.close())).resolves.toBeUndefined();
     });
 
-    it('uses the Jtest-style 12-hour timestamp in file output', async () => {
+    it('uses a 24-hour timestamp in file output', async () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date(2026, 7, 14, 13, 5, 6));
         try {
@@ -253,7 +253,7 @@ describe('LoggerProvider', () => {
             await LoggerProvider.close();
 
             const fileContents = readFileSync(findAgentLogFile(runtimeData), 'utf8');
-            expect(fileContents).toContain('[JSCOV-AGENT][INFO][08-14 01:05:06]: timestamp check');
+            expect(fileContents).toContain('[JSCOV-AGENT][INFO][08-14 13:05:06]: timestamp check');
         } finally {
             vi.useRealTimers();
         }

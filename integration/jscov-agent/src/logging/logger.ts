@@ -49,7 +49,7 @@ const consoleFormat = format.printf(({ level, message }) =>
 
 const fileFormat = format.combine(
     format.errors({ stack: true }),
-    format.timestamp({ format: 'MM-DD hh:mm:ss' }),
+    format.timestamp({ format: 'MM-DD HH:mm:ss' }),
     format.printf(({ level, message, stack, timestamp }) => {
         const formattedMessage = `[JSCOV-AGENT][${level.toUpperCase()}][${String(timestamp)}]: ${String(message)}`;
         return stack ? `${formattedMessage}\n${stack}` : formattedMessage;

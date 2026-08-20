@@ -87,6 +87,93 @@ describe('startAgent', () => {
         return readFileSync(join(loggerRuntimeData, logFile), 'utf8');
     }
 
+    type ResponseLog = {
+        date: string;
+        time: string;
+        clientAddress: string;
+        userIdentifier: string;
+        serverAddress: string;
+        serverPort: string;
+        method: string;
+        resourcePath: string;
+        resourceQuery: string;
+        statusCode: string;
+        responseSize: string;
+        requestSize: string;
+        duration: string;
+        host: string;
+        userAgent: string;
+        referrer: string;
+    };
+
+    function parseResponseLog(message: string): ResponseLog {
+        const [
+            date, time, clientAddress, userIdentifier, serverAddress, serverPort,
+            method, resourcePath, resourceQuery, statusCode, responseSize, requestSize,
+            duration, host, userAgent, referrer
+        ] = message.split('\t');
+        return {
+            date, time, clientAddress, userIdentifier, serverAddress, serverPort,
+            method, resourcePath, resourceQuery, statusCode, responseSize, requestSize,
+            duration, host, userAgent, referrer
+        };
+    }
+
+    it('writes an access log after every registered route response', async () => {
+        const info = vi.spyOn(LoggerProvider.console, 'info');
+        const { url } = await startTestAgent();
+        info.mockClear();
+
+        const status = await fetch(new URL('/status?userId=__Default__', url), {
+            headers: { 'User-Agent': 'status-access-log-test', Referer: 'https://example.test/status' }
+        });
+        expect(status.status).toBe(200);
+        await status.json();
+
+        const session = await fetch(url, {
+            method: 'POST',
+            headers: { 'User-Agent': 'session-access-log-test', Referer: 'https://example.test/session' }
+        });
+        expect(session.status).toBe(200);
+        await session.json();
+
+        const [statusLog, sessionLog] = info.mock.calls.map(([message]) => parseResponseLog(message));
+
+        expect(statusLog.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(statusLog.time).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+        expect(statusLog.clientAddress).toEqual(expect.any(String));
+        expect(statusLog.userIdentifier).toBe('-');
+        expect(statusLog.serverAddress).toEqual(expect.any(String));
+        expect(statusLog.serverPort).toMatch(/^\d+$/);
+        expect(statusLog.method).toBe('GET');
+        expect(statusLog.resourcePath).toBe('/status');
+        expect(statusLog.resourceQuery).toBe('userId=__Default__');
+        expect(statusLog.statusCode).toBe('200');
+        expect(statusLog.responseSize).toMatch(/^\d+$/);
+        expect(statusLog.requestSize).toBe('0');
+        expect(statusLog.duration).toMatch(/^\d+$/);
+        expect(statusLog.host).toMatch(/^127\.0\.0\.1:\d+$/);
+        expect(statusLog.userAgent).toBe('status-access-log-test');
+        expect(statusLog.referrer).toBe('https://example.test/status');
+
+        expect(sessionLog.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(sessionLog.time).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+        expect(sessionLog.clientAddress).toEqual(expect.any(String));
+        expect(sessionLog.userIdentifier).toBe('-');
+        expect(sessionLog.serverAddress).toEqual(expect.any(String));
+        expect(sessionLog.serverPort).toMatch(/^\d+$/);
+        expect(sessionLog.method).toBe('POST');
+        expect(sessionLog.resourcePath).toBe('/session/start');
+        expect(sessionLog.resourceQuery).toBe('-');
+        expect(sessionLog.statusCode).toBe('200');
+        expect(sessionLog.responseSize).toMatch(/^\d+$/);
+        expect(sessionLog.requestSize).toBe('0');
+        expect(sessionLog.duration).toMatch(/^\d+$/);
+        expect(sessionLog.host).toMatch(/^127\.0\.0\.1:\d+$/);
+        expect(sessionLog.userAgent).toBe('session-access-log-test');
+        expect(sessionLog.referrer).toBe('https://example.test/session');
+    });
+
     it('exposes temporary status on an OS-assigned port', async () => {
         const { url } = await startTestAgent();
         const response = await fetch(new URL('/status', url));

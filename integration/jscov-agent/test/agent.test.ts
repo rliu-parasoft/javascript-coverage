@@ -7,7 +7,6 @@ import { describe, expect, it } from 'vitest';
 import i18n from '../src/i18n.js';
 
 const moduleRoot = resolve(import.meta.dirname, '..');
-const statusUrl = 'http://127.0.0.1:8050/status';
 
 interface PreloadedApp {
     child: ChildProcess;
@@ -24,7 +23,7 @@ function spawnPreloadedApp(
 ): PreloadedApp {
     const isolatedRoot = mkdtempSync(join(tmpdir(), 'jscov-agent-preload-'));
     const runtimeData = join(isolatedRoot, 'runtime-data');
-    const agentArgs = createAgentArgs(isolatedRoot, runtimeData);
+    const agentArgs = ['--jscov.agent.restServerPort=0', ...createAgentArgs(isolatedRoot, runtimeData)];
     copyFileSync(resolve(moduleRoot, 'dist/agent.js'), join(isolatedRoot, 'agent.js'));
     copyFileSync(resolve(moduleRoot, `test/fixtures/${autFixture}`), join(isolatedRoot, 'aut-server.js'));
 
@@ -38,7 +37,7 @@ function spawnPreloadedApp(
         ], {
             cwd: isolatedRoot,
             env: { ...process.env, NODE_PATH: isolatedRoot },
-            stdio: ['ignore', 'pipe', 'pipe']
+            stdio: ['pipe', 'pipe', 'pipe']
         })
     };
 }
@@ -83,6 +82,21 @@ async function waitForOutput(output: () => string, errorOutput: () => string, ex
     }
 }
 
+async function waitForAgentUrl(output: () => string, errorOutput: () => string): Promise<string> {
+    const startupLine = /Parasoft JavaScript runtime coverage agent started on port (\d+)/;
+    const deadline = Date.now() + 5_000;
+    while (true) {
+        const match = output().match(startupLine);
+        if (match) {
+            return `http://127.0.0.1:${match[1]}`;
+        }
+        if (Date.now() >= deadline) {
+            throw new Error(`Timed out waiting for agent startup. stdout: ${output()}. stderr: ${errorOutput()}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+}
+
 async function terminate(child: ChildProcess, closed: Promise<unknown[]>): Promise<void> {
     if (child.exitCode === null) {
         child.kill();
@@ -114,7 +128,8 @@ describe('agent preload', () => {
         try {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ARGS:["--target-option","target-value"]');
-            expect(output.stdout().indexOf(i18n.t('agent_started', { port: 8050 })))
+            const agentUrl = await waitForAgentUrl(output.stdout, output.stderr);
+            expect(output.stdout().indexOf('Parasoft JavaScript runtime coverage agent started on port'))
                 .toBeLessThan(output.stdout().indexOf('AUT_SERVER_ENTERED'));
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
             expect(output.stdout()).toContain(i18n.t('agent_initializing'));
@@ -123,7 +138,7 @@ describe('agent preload', () => {
             let response: Response | undefined;
             while (!response && Date.now() < deadline) {
                 try {
-                    response = await fetch(statusUrl);
+                    response = await fetch(`${agentUrl}/status`);
                 } catch {
                     await new Promise((resolve) => setTimeout(resolve, 25));
                 }
@@ -142,7 +157,8 @@ describe('agent preload', () => {
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
-            expect(output.stdout()).toContain(i18n.t('agent_started', { port: 8050 }));
+            const agentUrl = await waitForAgentUrl(output.stdout, output.stderr);
+            expect(output.stdout()).toContain(i18n.t('agent_started', { port: Number(new URL(agentUrl).port) }));
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);
@@ -280,13 +296,15 @@ describe('agent preload', () => {
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
-            expect(output.stdout()).toContain(i18n.t('agent_started', { port: 8050 }));
+            const agentUrl = await waitForAgentUrl(output.stdout, output.stderr);
+            expect(output.stdout()).toContain(i18n.t('agent_started', { port: Number(new URL(agentUrl).port) }));
 
             const runtimeData = join(app.isolatedRoot, 'runtime-data');
             const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-000001-\d{10}\.log$/.test(file));
             expect(logFile).toBeDefined();
             const logFilePath = join(runtimeData, logFile);
             const fileContents = await waitForLogContent(logFilePath, `Agent parameter: runtimeData=${runtimeData} (SETTINGS_FILE)`);
+            expect(fileContents).toContain('Agent parameter: restServerPort=0 (ARGS)');
             expect(fileContents).toContain('Parasoft JavaScript runtime coverage agent configuration:');
         } finally {
             await terminate(app.child, output.closed);
@@ -394,6 +412,34 @@ describe('agent preload', () => {
         try {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
+    it('resets live preloaded-process coverage when a session starts', async () => {
+        const app = spawnPreloadedApp(
+            'aut-server-coverage.js',
+            [],
+            (_isolatedRoot, runtimeData) => ['--jscov.agent.runtimeData', runtimeData, '--jscov.agent.debug=true']
+        );
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'AUT_COVERAGE_READY');
+
+            const agentUrl = await waitForAgentUrl(output.stdout, output.stderr);
+            const response = await fetch(`${agentUrl}/session/start`);
+            expect(response.status).toBe(200);
+
+            app.child.stdin?.write('REPORT_COVERAGE\n');
+            await waitForOutput(
+                output.stdout,
+                output.stderr,
+                'AUT_COVERAGE:{"/fixture.js":{"s":{"0":0},"f":{"0":0},"b":{"0":[0,0]},"bT":{"0":[6,7]}}}'
+            );
+            await terminate(app.child, output.closed);
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);

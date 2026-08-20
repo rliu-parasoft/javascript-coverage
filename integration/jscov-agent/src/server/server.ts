@@ -1,11 +1,13 @@
 import express, { type Express } from 'express';
 import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import type { AgentConfig } from '../configuration/config.js';
+import { createRoutes } from './routes.js';
 import { LoggerProvider } from '../logging/logger.js';
 import i18n from '../i18n.js';
-import { routes } from './routes.js';
 
 export interface StartedAgent {
+    port: number;
     close(): Promise<void>;
 }
 
@@ -27,22 +29,22 @@ export class RestServiceStartupError extends Error {
 
 export async function startAgent(config: AgentConfig): Promise<StartedAgent> {
     if (!config.restServerEnabled) {
-        return { close: async () => undefined };
+        return { port: config.restServerPort, close: async () => undefined };
     }
 
     const app = express();
-    for (const register of routes) {
+    for (const register of createRoutes(config)) {
         register(app);
     }
 
     const server = await listen(app, config.restServerPort);
-    const address = server.address();
-    const port = typeof address === 'string' || !address ? config.restServerPort : address.port;
+    const { port } = server.address() as AddressInfo;
     const message = i18n.t('agent_started', { port });
     LoggerProvider.file.info(message);
     LoggerProvider.console.info(message);
 
     return {
+        port,
         close() {
             return new Promise((resolve, reject) => {
                 server.close((error) => (error ? reject(error) : resolve()));

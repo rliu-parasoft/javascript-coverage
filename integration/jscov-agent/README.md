@@ -12,6 +12,58 @@ When the agent is outside the current directory on Windows, pass its absolute pa
 node --import file:///E:/path/to/agent.js aut-server.js
 ```
 
+## Session start
+
+The runtime data directory is required. Pass it as an agent argument after the application entry point:
+
+```powershell
+node --import .\agent.js aut-server.js --jscov.agent.runtimeData .\runtime-data
+```
+
+Start the default-user session with either HTTP method (the REST server listens on port `8050` by default):
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8050/session/start
+Invoke-RestMethod -Method Post http://127.0.0.1:8050/session/start
+```
+
+Each successful request returns `200` with a generated session ID such as
+`runtime_coverage_20260807_1603_0`. Session IDs follow the
+`runtime_coverage_yyyyMMdd_HHmm_N` pattern. The agent reserves a file
+initialized to `{}` (an empty JSON object) for the session at
+`runtimeData/__default__/<session>.json`, where `runtimeData` is the required
+argument value.
+
+Set `jscov.agent.debug=true` to log session starts and duplicate rejections; preparation failures are logged as agent errors.
+
+### Inspect runtime hit information in VS Code
+
+To inspect the instrumented application's `__coverage__` data before and after starting a session:
+
+1. Open the `javascript-coverage` project in VS Code and select **Run and Debug** in the left sidebar.
+2. Click **JavaScript Debug Terminal**. In the terminal that opens, run the Node command that starts the instrumented application with the agent preloaded.
+3. Select the **DEBUG CONSOLE** tab and enter `__coverage__` to inspect the hit information before starting a session.
+4. Call `GET` or `POST /session/start`, then enter `__coverage__` again in **DEBUG CONSOLE** to inspect the hit information after the reset.
+
+Only one default-user session may be active. A duplicate request returns `400`:
+
+```json
+{
+  "messageCode": 150,
+  "message": "Session is already started"
+}
+```
+
+If session preparation fails, the server returns `500` with this contract; the
+message contains the underlying error text:
+
+```json
+{
+  "messageCode": 500,
+  "message": "<error message>"
+}
+```
+
 The agent listens on port `8050`. 
 
 ## Configuration

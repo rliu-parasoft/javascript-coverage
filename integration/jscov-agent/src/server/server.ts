@@ -1,10 +1,11 @@
-import express, { type Express } from 'express';
+import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { AgentConfig } from '../configuration/config.js';
 import { createRoutes } from './routes.js';
 import { LoggerProvider } from '../logging/logger.js';
 import i18n from '../i18n.js';
+import { getResponseLogMessage } from '../utils.js';
 
 export interface StartedAgent {
     port: number;
@@ -33,6 +34,7 @@ export async function startAgent(config: AgentConfig): Promise<StartedAgent> {
     }
 
     const app = express();
+    app.use(accessLog);
     for (const register of createRoutes(config)) {
         register(app);
     }
@@ -51,6 +53,18 @@ export async function startAgent(config: AgentConfig): Promise<StartedAgent> {
             });
         }
     };
+}
+
+function accessLog(request: Request, response: Response, next: NextFunction): void {
+    const startedAt = new Date();
+    const server = {
+        address: response.socket?.localAddress ?? '-',
+        port: response.socket?.localPort?.toString() ?? '-'
+    };
+    response.once('finish', () => {
+        LoggerProvider.console.info(getResponseLogMessage(request, response, startedAt, server));
+    });
+    next();
 }
 
 function listen(app: Express, port: number): Promise<Server> {

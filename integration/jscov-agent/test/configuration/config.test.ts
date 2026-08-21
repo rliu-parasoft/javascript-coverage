@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../../src/i18n.js';
 import { parseCommandLine, readSettingsFile, resolveConfiguration, type AgentConfig, type AgentConfigInput, type ConfigurationInput } from '../../src/configuration/config.js';
@@ -35,6 +35,25 @@ describe('configuration', () => {
             settings: undefined, runtimeData, sessionAutostart: true, restServerEnabled: true, restServerPort: 8050, debug: false, silentMode: false
         });
         expect(existsSync(runtimeData)).toBe(true);
+    });
+
+    it('normalizes configured settings and runtime data to absolute paths', () => {
+        const settings = join(process.cwd(), 'package.json');
+        const runtimeData = join(process.cwd(), 'test');
+        const relativeSettings = relative(process.cwd(), settings);
+        const relativeRuntimeData = relative(process.cwd(), runtimeData);
+        expect(isAbsolute(relativeSettings)).toBe(false);
+        expect(isAbsolute(relativeRuntimeData)).toBe(false);
+
+        const config = resolveArguments([
+            '--jscov.agent.settings', relativeSettings,
+            '--jscov.agent.runtimeData', relativeRuntimeData
+        ]);
+
+        expect(config.settings).toBe(settings);
+        expect(config.runtimeData).toBe(runtimeData);
+        expect(isAbsolute(config.settings!)).toBe(true);
+        expect(isAbsolute(config.runtimeData)).toBe(true);
     });
 
     it('reads only supported values from a JSONC settings file', () => {
@@ -209,6 +228,27 @@ describe('configuration', () => {
         const blockedRuntimeData = join(runtimeFile, 'runtime-data');
         expect(() => resolveArguments(['--jscov.agent.runtimeData', blockedRuntimeData]))
             .toThrow(i18n.t('runtime_data_cannot_be_created', { path: blockedRuntimeData }));
+    });
+
+    it('preserves a relative missing settings path in the validation error', () => {
+        const missingSettings = 'missing-settings-for-path-regression.jsonc';
+
+        expect(() => resolveArguments([
+            '--jscov.agent.runtimeData', 'test',
+            '--jscov.agent.settings', missingSettings
+        ])).toThrow(i18n.t('settings_file_does_not_exist', { path: missingSettings }));
+    });
+
+    it('preserves the empty settings validation error', () => {
+        expect(() => resolveArguments([
+            '--jscov.agent.runtimeData', 'test',
+            '--jscov.agent.settings', ''
+        ])).toThrow(i18n.t('settings_file_does_not_exist', { path: '' }));
+    });
+
+    it('preserves a relative runtime data file path in the validation error', () => {
+        expect(() => resolveArguments(['--jscov.agent.runtimeData', 'package.json']))
+            .toThrow(i18n.t('runtime_data_not_directory', { path: 'package.json' }));
     });
 
     it('strips agent options throughout the command line', () => {

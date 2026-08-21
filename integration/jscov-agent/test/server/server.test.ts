@@ -1,8 +1,9 @@
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resolveConfiguration, type AgentConfig } from '../../src/configuration/config.js';
 import i18n from '../../src/i18n.js';
 import { LoggerProvider } from '../../src/logging/logger.js';
 import { RestServiceStartupError, startAgent, type StartedAgent } from '../../src/server/server.js';
@@ -50,20 +51,25 @@ describe('startAgent', () => {
         }
     }
 
-    async function startTestAgent(debug = false, restServerPort = 0): Promise<{ agent: StartedAgent; runtimeData: string; url: string }> {
-        const runtimeData = mkdtempSync(join(tmpdir(), 'jscov-agent-server-'));
-        temporaryRoots.push(runtimeData);
-        const agent = await startAgent({
+    async function startTestAgent(overrides: Partial<AgentConfig> = {}): Promise<{ agent: StartedAgent; runtimeData: string; baseUrl: string; url: string }> {
+        const runtimeData = overrides.runtimeData ?? mkdtempSync(join(tmpdir(), 'jscov-agent-server-'));
+        if (overrides.runtimeData === undefined) {
+            temporaryRoots.push(runtimeData);
+        }
+        const config: AgentConfig = {
             settings: undefined,
             runtimeData,
             sessionAutostart: true,
             restServerEnabled: true,
-            restServerPort,
-            debug,
-            silentMode: true
-        });
+            restServerPort: 0,
+            debug: false,
+            silentMode: true,
+            ...overrides
+        };
+        const agent = await startAgent(config);
         agents.push(agent);
-        return { agent, runtimeData, url: `http://127.0.0.1:${agent.port}/session/start` };
+        const baseUrl = `http://127.0.0.1:${agent.port}`;
+        return { agent, runtimeData: config.runtimeData, baseUrl, url: `${baseUrl}/session/start` };
     }
 
     async function configureLogger(debug = false): Promise<void> {
@@ -174,26 +180,26 @@ describe('startAgent', () => {
         expect(sessionLog.referrer).toBe('https://example.test/session');
     });
 
-    it('exposes temporary status on an OS-assigned port', async () => {
-        const { url } = await startTestAgent();
-        const response = await fetch(new URL('/status', url));
+    it.each(['GET', 'POST'] as const)('returns the active default-user session from GET /status after %s /session/start', async (method) => {
+        const { baseUrl } = await startTestAgent();
+        let response = await fetch(`${baseUrl}/status`);
+
         expect(response.status).toBe(200);
-        expect(await response.json()).toEqual({ status: 'ok', temporary: true });
+        expect(await response.json()).toEqual({ session: null });
+
+        response = await fetch(`${baseUrl}/session/start`, { method });
+        expect(response.status).toBe(200);
+        const { session } = await response.json() as { session: string };
+
+        response = await fetch(`${baseUrl}/status`);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ session });
         await expect(fetch('http://[::1]:8050/status')).rejects.toThrow();
     });
 
     it('logs the actual bound port when configured port is zero', async () => {
         const info = vi.spyOn(LoggerProvider.console, 'info');
-        const agent = await startAgent({
-            settings: undefined,
-            runtimeData: 'unused-by-server',
-            sessionAutostart: true,
-            restServerEnabled: true,
-            restServerPort: 0,
-            debug: false,
-            silentMode: true
-        });
-        agents.push(agent);
+        const { baseUrl } = await startTestAgent();
 
         const message = info.mock.calls.at(-1)?.[0];
         if (!message) {
@@ -211,8 +217,110 @@ describe('startAgent', () => {
         expect(portText).toMatch(/^\d+$/);
         expect(Number(portText)).toBeGreaterThan(0);
 
-        const response = await fetch(`http://127.0.0.1:${portText}/status`);
+        const response = await fetch(`${baseUrl}/status`);
         expect(response.status).toBe(200);
+    });
+
+    it('returns the effective configuration from GET /config', async () => {
+        const { baseUrl } = await startTestAgent({
+            settings: '/path/to/agent.jsonc',
+            runtimeData: '/path/to/runtime/coverage',
+            sessionAutostart: false,
+            restServerEnabled: true,
+            restServerPort: 0,
+            debug: true,
+            silentMode: true
+        });
+
+        const response = await fetch(`${baseUrl}/config`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({
+            settings: '/path/to/agent.jsonc',
+            runtimeData: '/path/to/runtime/coverage',
+            sessionAutostart: false,
+            restServerEnabled: true,
+            restServerPort: 0,
+            debugOn: true,
+            silentModeOn: true
+        });
+    });
+
+    it('returns absolute paths from relative configuration through GET /config', async () => {
+        const settings = join(process.cwd(), 'package.json');
+        const runtimeData = join(process.cwd(), 'test');
+        const configuration = resolveConfiguration([{
+            source: 'ARGS',
+            input: {
+                settings: relative(process.cwd(), settings),
+                runtimeData: relative(process.cwd(), runtimeData),
+                sessionAutostart: false,
+                restServerEnabled: true,
+                restServerPort: 0,
+                debug: true,
+                silentMode: false
+            }
+        }]);
+        expect(configuration.error).toBeUndefined();
+
+        const { baseUrl } = await startTestAgent(configuration.config!);
+        const response = await fetch(`${baseUrl}/config`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({
+            settings,
+            runtimeData,
+            sessionAutostart: false,
+            restServerEnabled: true,
+            restServerPort: 0,
+            debugOn: true,
+            silentModeOn: false
+        });
+    });
+
+    it('returns a settings key when GET /config has unset settings', async () => {
+        const { baseUrl } = await startTestAgent({
+            settings: undefined,
+            runtimeData: '/path/to/runtime/coverage',
+            sessionAutostart: false,
+            restServerEnabled: true,
+            restServerPort: 0,
+            debug: true,
+            silentMode: false
+        });
+
+        const response = await fetch(`${baseUrl}/config`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({
+            settings: null,
+            runtimeData: '/path/to/runtime/coverage',
+            sessionAutostart: false,
+            restServerEnabled: true,
+            restServerPort: 0,
+            debugOn: true,
+            silentModeOn: false
+        });
+    });
+
+    it('returns the agent identity from GET /info', async () => {
+        const { baseUrl } = await startTestAgent({
+            settings: undefined,
+            runtimeData: 'unused-by-server',
+            sessionAutostart: true,
+            restServerEnabled: true,
+            restServerPort: 0,
+            debug: false,
+            silentMode: false
+        });
+
+        const response = await fetch(`${baseUrl}/info`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({
+            'agent-mode': 'singleuser',
+            'tool-id': 'parasoft-jscov'
+        });
     });
 
     it('does not bind a REST port when disabled', async () => {
@@ -237,10 +345,9 @@ describe('startAgent', () => {
 
         expect(error.message).toBe(i18n.t('agent_rest_service_start_failed', { detail }));
     });
-
     it('retains the configured nonzero server port', async () => {
         const port = await findAvailablePort();
-        const { agent } = await startTestAgent(false, port);
+        const { agent } = await startTestAgent({ restServerPort: port });
 
         expect(agent.port).toBe(port);
     });
@@ -258,7 +365,7 @@ describe('startAgent', () => {
 
         try {
             const detail = i18n.t('agent_rest_port_unavailable', { port });
-            await expect(startTestAgent(false, port)).rejects.toMatchObject({
+            await expect(startTestAgent({ restServerPort: port })).rejects.toMatchObject({
                 name: 'RestServiceStartupError',
                 message: i18n.t('agent_rest_service_start_failed', { detail })
             });
@@ -281,7 +388,7 @@ describe('startAgent', () => {
 
     it('logs the started session when debug logging is enabled', async () => {
         await configureLogger(true);
-        const { url } = await startTestAgent(true);
+        const { url } = await startTestAgent({ debug: true });
 
         const response = await fetch(url);
 
@@ -305,7 +412,7 @@ describe('startAgent', () => {
     it('returns the duplicate contract without creating another session file', async () => {
         await configureLogger(true);
         const log = vi.spyOn(LoggerProvider.file, 'debug');
-        const { runtimeData, url } = await startTestAgent(true);
+        const { runtimeData, url } = await startTestAgent({ debug: true });
         await fetch(url);
         log.mockClear();
 
@@ -406,5 +513,5 @@ describe('startAgent', () => {
                 delete coverageGlobal.__coverage__;
             }
         }
-});
+    });
 });

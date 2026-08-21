@@ -1,5 +1,7 @@
 import type { Express, Request, Response } from 'express';
+import { currentAgentDescriptor } from '../agent-info.js';
 import type { AgentConfig } from '../configuration/config.js';
+import { toConfigResponse, toInfoResponse, toStatusResponse } from './responses.js';
 import i18n from '../i18n.js';
 import { LoggerProvider } from '../logging/logger.js';
 import { SessionAlreadyStartedError, SessionService } from '../session/session-service.js';
@@ -7,16 +9,28 @@ import { errorMessage as getErrorMessage } from '../utils.js';
 
 type RouteRegistrar = (app: Express) => void;
 
-// Todo: placeholder
-const status: RouteRegistrar = (app) => {
-    app.get('/status', (_request, response) => {
-        response.json({ status: 'ok', temporary: true });
-    });
-};
+function statusRoute(sessions: SessionService): RouteRegistrar {
+    return (app) => {
+        app.get('/status', (_request, response) => {
+            response.json(toStatusResponse(sessions.getActiveSession()));
+        });
+    };
+}
 
-export function createRoutes(config: AgentConfig): readonly RouteRegistrar[] {
-    const sessions = new SessionService(config.runtimeData);
-    return [status, sessionStart(sessions)];
+function configRoute(config: AgentConfig): RouteRegistrar {
+    return (app) => {
+        app.get('/config', (_request, response) => {
+            response.json(toConfigResponse(config));
+        });
+    };
+}
+
+function infoRoute(): RouteRegistrar {
+    return (app) => {
+        app.get('/info', (_request, response) => {
+            response.json(toInfoResponse(currentAgentDescriptor));
+        });
+    };
 }
 
 function sessionStart(sessions: SessionService): RouteRegistrar {
@@ -46,4 +60,9 @@ function sessionStart(sessions: SessionService): RouteRegistrar {
         app.get('/session/start', start);
         app.post('/session/start', start);
     };
+}
+
+export function createRoutes(config: AgentConfig): readonly RouteRegistrar[] {
+    const sessions = new SessionService(config.runtimeData);
+    return [statusRoute(sessions), configRoute(config), infoRoute(), sessionStart(sessions)];
 }

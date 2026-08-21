@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, statSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { parse as parseJsonc, type ParseError } from 'jsonc-parser';
 import parse from 'yargs-parser';
 import { errorMessage } from '../utils.js';
@@ -314,15 +315,20 @@ function resolveSettings(value: unknown): string | undefined {
         return undefined;
     }
 
-    const path = String(value);
+    const rawPath = String(value);
+    if (rawPath === '') {
+        throw new Error(i18n.t('settings_file_does_not_exist', { path: rawPath }));
+    }
+
+    const path = resolve(rawPath);
     let stats;
     try {
         stats = statSync(path);
     } catch {
-        throw new Error(i18n.t('settings_file_does_not_exist', { path }));
+        throw new Error(i18n.t('settings_file_does_not_exist', { path: rawPath }));
     }
     if (!stats.isFile()) {
-        throw new Error(i18n.t('settings_must_be_file', { path }));
+        throw new Error(i18n.t('settings_must_be_file', { path: rawPath }));
     }
     return path;
 }
@@ -332,9 +338,10 @@ function resolveRuntimeData(value: unknown): string {
         throw new Error(i18n.t('runtime_data_missing'));
     }
 
+    const path = resolve(value);
     let stats;
     try {
-        stats = statSync(value, { throwIfNoEntry: false });
+        stats = statSync(path, { throwIfNoEntry: false });
     } catch {
         // Let mkdirSync report whether the path can be created.
     }
@@ -342,9 +349,9 @@ function resolveRuntimeData(value: unknown): string {
         throw new Error(i18n.t('runtime_data_not_directory', { path: value }));
     }
     try {
-        mkdirSync(value, { recursive: true });
+        mkdirSync(path, { recursive: true });
     } catch {
         throw new Error(i18n.t('runtime_data_cannot_be_created', { path: value }));
     }
-    return value;
+    return path;
 }

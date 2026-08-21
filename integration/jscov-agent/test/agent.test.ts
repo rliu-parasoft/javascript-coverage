@@ -83,7 +83,12 @@ async function waitForOutput(output: () => string, errorOutput: () => string, ex
 }
 
 async function waitForAgentUrl(output: () => string, errorOutput: () => string): Promise<string> {
-    const startupLine = /Parasoft JavaScript runtime coverage agent started on port (\d+)/;
+    const portMarker = '__PORT__';
+    const startupTemplate = i18n.t('agent_started', { port: portMarker });
+    const markerIndex = startupTemplate.indexOf(portMarker);
+    const startupLine = new RegExp(
+        `${escapeRegex(startupTemplate.slice(0, markerIndex))}(\\d+)${escapeRegex(startupTemplate.slice(markerIndex + portMarker.length))}`
+    );
     const deadline = Date.now() + 5_000;
     while (true) {
         const match = output().match(startupLine);
@@ -95,6 +100,10 @@ async function waitForAgentUrl(output: () => string, errorOutput: () => string):
         }
         await new Promise((resolve) => setTimeout(resolve, 25));
     }
+}
+
+function escapeRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function terminate(child: ChildProcess, closed: Promise<unknown[]>): Promise<void> {
@@ -114,7 +123,7 @@ async function waitForExit(closed: Promise<unknown[]>): Promise<number | null> {
 }
 
 describe('agent preload', () => {
-    it('preloads for the runtime command and exposes temporary status', async () => {
+    it('preloads for the runtime command and exposes status before a session starts', async () => {
         const app = spawnPreloadedApp(
             'aut-server.js',
             ['--target-option', 'target-value'],
@@ -129,7 +138,8 @@ describe('agent preload', () => {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ARGS:["--target-option","target-value"]');
             const agentUrl = await waitForAgentUrl(output.stdout, output.stderr);
-            expect(output.stdout().indexOf('Parasoft JavaScript runtime coverage agent started on port'))
+            const startupMessage = i18n.t('agent_started', { port: Number(new URL(agentUrl).port) });
+            expect(output.stdout().indexOf(startupMessage))
                 .toBeLessThan(output.stdout().indexOf('AUT_SERVER_ENTERED'));
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
             expect(output.stdout()).toContain(i18n.t('agent_initializing'));
@@ -144,7 +154,7 @@ describe('agent preload', () => {
                 }
             }
             expect(response?.status).toBe(200);
-            expect(await response?.json()).toEqual({ status: 'ok', temporary: true });
+            expect(await response?.json()).toEqual({ session: null });
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);

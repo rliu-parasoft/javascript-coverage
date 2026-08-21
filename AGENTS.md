@@ -9,6 +9,10 @@
 
 - Run Gradle tasks through the repository-root Gradle wrapper.
 
+## Tests
+
+- Tests must not assume a single language; generate localized message expectations through i18n resources.
+
 ## Repository Knowledge
 
 - When a task may need repository structural facts or domain details, read `ARCHITECTURE.md` first. It is the lightweight entry point that routes current behavior to `docs/domain/` and accepted future direction to `docs/design/`; from there, conditionally load only the specific documents the task needs.

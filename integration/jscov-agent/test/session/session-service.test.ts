@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../../src/i18n.js';
 import { LoggerProvider } from '../../src/logging/logger.js';
 import { DEFAULT_USER_ID, SessionAlreadyStartedError, SessionService } from '../../src/session/session-service.js';
 
@@ -162,6 +163,8 @@ describe('SessionService', () => {
         expect(thrown).toBeInstanceOf(TypeError);
         expect((thrown as Error).message).toMatch(/Cannot assign to read only property/);
         expect((thrown as Error).message).not.toBe('cleanup failed');
-        expect(log).toHaveBeenCalledWith('Failed to clean up session reservation: cleanup failed');
+        expect(log).toHaveBeenCalledWith(
+            i18n.t('session_reservation_cleanup_failed', { error: 'cleanup failed' })
+        );
     });
 });

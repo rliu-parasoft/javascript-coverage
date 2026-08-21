@@ -14,7 +14,7 @@ export class SessionAlreadyStartedError extends Error {
 }
 
 export class SessionService {
-    private readonly sessions = new Map<string, string>();
+    private readonly activeSessionForUsers = new Map<string, string>();
     private readonly startingUsers = new Set<string>();
 
     constructor(
@@ -22,8 +22,12 @@ export class SessionService {
         private readonly now: () => Date = () => new Date()
     ) {}
 
+    getActiveSession(userId = DEFAULT_USER_ID): string | undefined {
+        return this.activeSessionForUsers.get(userId);
+    }
+
     startSession(userId = DEFAULT_USER_ID): string {
-        if (this.sessions.has(userId) || this.startingUsers.has(userId)) {
+        if (this.activeSessionForUsers.has(userId) || this.startingUsers.has(userId)) {
             throw new SessionAlreadyStartedError();
         }
 
@@ -33,7 +37,7 @@ export class SessionService {
         try {
             reservation = this.reserveSessionFile(userId);
             clearCoverageHits();
-            this.sessions.set(userId, reservation.sessionId);
+            this.activeSessionForUsers.set(userId, reservation.sessionId);
             return reservation.sessionId;
         } catch (error) {
             if (reservation) {

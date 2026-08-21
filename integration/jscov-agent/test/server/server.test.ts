@@ -59,7 +59,7 @@ describe('startAgent', () => {
         const config: AgentConfig = {
             settings: undefined,
             runtimeData,
-            sessionAutostart: true,
+            sessionAutostart: false,
             restServerEnabled: true,
             restServerPort: 0,
             debug: false,
@@ -71,6 +71,31 @@ describe('startAgent', () => {
         const baseUrl = `http://127.0.0.1:${agent.port}`;
         return { agent, runtimeData: config.runtimeData, baseUrl, url: `${baseUrl}/session/start` };
     }
+
+    it('autostarts one default-user session before serving the REST API', async () => {
+        const { runtimeData, url } = await startTestAgent({ sessionAutostart: true });
+
+        expect(readdirSync(join(runtimeData, '__default__'))).toHaveLength(1);
+
+        const response = await fetch(url);
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+            messageCode: 150,
+            message: i18n.t('session_already_started')
+        });
+        expect(readdirSync(join(runtimeData, '__default__'))).toHaveLength(1);
+    });
+
+    it('does not autostart a session when autostart is disabled', async () => {
+        const { runtimeData, url } = await startTestAgent({ sessionAutostart: false });
+
+        expect(() => readdirSync(join(runtimeData, '__default__'))).toThrowError(expect.objectContaining({ code: 'ENOENT' }));
+
+        const response = await fetch(url);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ session: expect.stringMatching(/^runtime_coverage_\d{8}_\d{4}_0$/) });
+        expect(readdirSync(join(runtimeData, '__default__'))).toHaveLength(1);
+    });
 
     async function configureLogger(debug = false): Promise<void> {
         await LoggerProvider.close();
@@ -324,19 +349,42 @@ describe('startAgent', () => {
     });
 
     it('does not bind a REST port when disabled', async () => {
+        const runtimeData = mkdtempSync(join(tmpdir(), 'jscov-agent-rest-disabled-'));
+        temporaryRoots.push(runtimeData);
+        const port = await findAvailablePort();
         const agent = await startAgent({
             settings: undefined,
-            runtimeData: 'unused-by-server',
+            runtimeData,
             sessionAutostart: true,
             restServerEnabled: false,
-            restServerPort: 18050,
+            restServerPort: port,
             debug: false,
             silentMode: true
         });
         agents.push(agent);
 
-        await expect(fetch('http://127.0.0.1:18050/status')).rejects.toThrow();
+        expect(readdirSync(join(runtimeData, '__default__'))).toHaveLength(1);
+        await expect(fetch(`http://127.0.0.1:${port}/status`)).rejects.toThrow();
         await expect(agent.close()).resolves.toBeUndefined();
+    });
+
+    it('fails Agent startup before binding when autostart preparation fails', async () => {
+        const runtimeData = mkdtempSync(join(tmpdir(), 'jscov-autostart-failure-'));
+        temporaryRoots.push(runtimeData);
+        writeFileSync(join(runtimeData, '__default__'), 'not a directory');
+        const port = await findAvailablePort();
+
+        await expect(startAgent({
+            settings: undefined,
+            runtimeData,
+            sessionAutostart: true,
+            restServerEnabled: true,
+            restServerPort: port,
+            debug: false,
+            silentMode: true
+        })).rejects.toThrow();
+
+        await expect(fetch(`http://127.0.0.1:${port}/status`)).rejects.toThrow();
     });
 
     it('localizes REST service startup failures', () => {

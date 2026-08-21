@@ -20,7 +20,19 @@ The runtime data directory is required. Pass it as an agent argument after the a
 node --import .\agent.js aut-server.js --jscov.agent.runtimeData .\runtime-data
 ```
 
-Start the default-user session with either HTTP method (the REST server listens on port `8050` by default):
+`jscov.agent.session.autostart` defaults to `true`. With the default setting, the
+agent creates the default-user session before the REST server begins listening.
+A later `GET` or `POST /session/start` request sees that existing session and
+returns the duplicate-session response.
+
+To defer session creation, disable autostart explicitly:
+
+```powershell
+node --import .\agent.js aut-server.js --jscov.agent.runtimeData .\runtime-data --jscov.agent.session.autostart=false
+```
+
+With autostart disabled, start the default-user session with either HTTP method
+(the REST server listens on port `8050` by default):
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8050/session/start
@@ -34,14 +46,16 @@ initialized to `{}` (an empty JSON object) for the session at
 `runtimeData/__default__/<session>.json`, where `runtimeData` is the required
 argument value.
 
-Set `jscov.agent.debug=true` to log session starts and duplicate rejections; preparation failures are logged as agent errors.
+Set `jscov.agent.debug=true` to log session starts and duplicate rejections. If
+autostart preparation fails, the Agent reports an Agent startup failure and
+does not expose the REST server.
 
 ### Inspect runtime hit information in VS Code
 
-To inspect the instrumented application's `__coverage__` data before and after starting a session:
+To inspect the instrumented application's `__coverage__` data before and after manually starting a session, disable autostart when launching the application:
 
 1. Open the `javascript-coverage` project in VS Code and select **Run and Debug** in the left sidebar.
-2. Click **JavaScript Debug Terminal**. In the terminal that opens, run the Node command that starts the instrumented application with the agent preloaded.
+2. Click **JavaScript Debug Terminal**. In the terminal that opens, run the Node command that starts the instrumented application with the agent preloaded and add `--jscov.agent.session.autostart=false`.
 3. Select the **DEBUG CONSOLE** tab and enter `__coverage__` to inspect the hit information before starting a session.
 4. Call `GET` or `POST /session/start`, then enter `__coverage__` again in **DEBUG CONSOLE** to inspect the hit information after the reset.
 

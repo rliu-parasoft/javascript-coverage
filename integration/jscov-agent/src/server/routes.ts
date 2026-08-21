@@ -62,7 +62,6 @@ function sessionStart(sessions: SessionService): RouteRegistrar {
     };
 }
 
-export function createRoutes(config: AgentConfig): readonly RouteRegistrar[] {
-    const sessions = new SessionService(config.runtimeData);
+export function createRoutes(config: AgentConfig, sessions: SessionService): readonly RouteRegistrar[] {
     return [statusRoute(sessions), configRoute(config), infoRoute(), sessionStart(sessions)];
 }

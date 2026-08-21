@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { once } from 'node:events';
@@ -123,7 +123,7 @@ async function waitForExit(closed: Promise<unknown[]>): Promise<number | null> {
 }
 
 describe('agent preload', () => {
-    it('preloads for the runtime command and exposes status before a session starts', async () => {
+    it('preloads for the runtime command and exposes the autostarted session', async () => {
         const app = spawnPreloadedApp(
             'aut-server.js',
             ['--target-option', 'target-value'],
@@ -154,7 +154,10 @@ describe('agent preload', () => {
                 }
             }
             expect(response?.status).toBe(200);
-            expect(await response?.json()).toEqual({ session: null });
+            expect(await response?.json()).toEqual({ session: expect.stringMatching(/^runtime_coverage_\d{8}_\d{4}_0$/) });
+            const sessionFiles = readdirSync(join(app.isolatedRoot, 'runtime-data', '__default__'))
+                .filter((file) => file.endsWith('.json'));
+            expect(sessionFiles).toHaveLength(1);
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);
@@ -428,11 +431,42 @@ describe('agent preload', () => {
         }
     }, 10_000);
 
+    it('reports autostart failure without starting the REST server', async () => {
+        const app = spawnPreloadedApp('aut-server.js', [], (_isolatedRoot, runtimeData) => {
+            mkdirSync(runtimeData, { recursive: true });
+            writeFileSync(join(runtimeData, '__default__'), 'not a directory');
+            return [
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.restServerEnabled=true'
+            ];
+        });
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            await waitForOutput(output.stdout, output.stderr, `[JSCOV-AGENT][ERROR]: ${i18n.t('agent_startup_failed')}`);
+            const portMarker = '__PORT__';
+            const startupTemplate = i18n.t('agent_started', { port: portMarker });
+            const markerIndex = startupTemplate.indexOf(portMarker);
+            const startupLine = new RegExp(
+                `${escapeRegex(startupTemplate.slice(0, markerIndex))}\\d+${escapeRegex(startupTemplate.slice(markerIndex + portMarker.length))}`
+            );
+            expect(output.stdout()).not.toMatch(startupLine);
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
     it('resets live preloaded-process coverage when a session starts', async () => {
         const app = spawnPreloadedApp(
             'aut-server-coverage.js',
             [],
-            (_isolatedRoot, runtimeData) => ['--jscov.agent.runtimeData', runtimeData, '--jscov.agent.debug=true']
+            (_isolatedRoot, runtimeData) => [
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.debug=true',
+                '--jscov.agent.session.autostart=false'
+            ]
         );
         const output = collectOutput(app.child);
 

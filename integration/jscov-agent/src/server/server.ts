@@ -6,6 +6,7 @@ import { createRoutes } from './routes.js';
 import { LoggerProvider } from '../logging/logger.js';
 import i18n from '../i18n.js';
 import { getResponseLogMessage } from '../utils.js';
+import { SessionService } from '../session/session-service.js';
 
 export interface StartedAgent {
     port: number;
@@ -29,13 +30,19 @@ export class RestServiceStartupError extends Error {
 }
 
 export async function startAgent(config: AgentConfig): Promise<StartedAgent> {
+    const sessions = new SessionService(config.runtimeData);
+    if (config.sessionAutostart) {
+        const session = sessions.startSession();
+        LoggerProvider.file.debug(i18n.t('session_started', { session }));
+    }
+
     if (!config.restServerEnabled) {
         return { port: config.restServerPort, close: async () => undefined };
     }
 
     const app = express();
     app.use(accessLog);
-    for (const register of createRoutes(config)) {
+    for (const register of createRoutes(config, sessions)) {
         register(app);
     }
 

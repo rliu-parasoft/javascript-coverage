@@ -57,6 +57,7 @@ lombok.config
 /.agents/skills/*
 !/.agents/skills/regression-parasoft-istanbul-lib-instrument
 !/.agents/skills/evidence-backed-verification
+!/.agents/skills/regression-jscov-agent
 !/.agents/skills/code-review
 !/.agents/skills/bitbucket-pr-comment-review
 /.agent

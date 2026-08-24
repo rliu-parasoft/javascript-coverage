@@ -516,6 +516,39 @@ describe('agent preload', () => {
         }
     }, 10_000);
 
+    it('logs a REST startup ERROR to stdout in silent mode and keeps file diagnostics', async () => {
+        const app = spawnPreloadedApp('aut-server.js', [
+            '--jscov.agent.restServerEnabled=true',
+            '--jscov.agent.restServerPort=-1',
+            '--jscov.agent.silentMode=true'
+        ]);
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            const startupFailure = i18n.t('agent_rest_service_start_failed', { detail: '' }).trimEnd();
+            await waitForOutput(output.stdout, output.stderr, `[JSCOV-AGENT][ERROR]: ${startupFailure}`);
+
+            expect(output.stdout()).toContain(`[JSCOV-AGENT][ERROR]: ${startupFailure}`);
+            expect(output.stdout()).not.toContain(i18n.t('agent_initializing'));
+            expect(output.stdout()).not.toContain('[JSCOV-AGENT][INFO]');
+            expect(output.stdout()).not.toContain('[JSCOV-AGENT][WARN]');
+            expect(output.stdout()).not.toMatch(/\n(?:Error|RangeError|TypeError)[^\r\n]*\r?\n\s+at /);
+            expect(output.stderr()).not.toContain('[JSCOV-AGENT][ERROR]:');
+
+            const runtimeData = join(app.isolatedRoot, 'runtime-data');
+            const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-000001-\d{10}\.log$/.test(file));
+            expect(logFile).toBeDefined();
+            const logContents = await waitForLogContent(join(runtimeData, logFile), startupFailure);
+            expect(logContents).toMatch(/\n(?:Error|RangeError|TypeError)[^\r\n]*\r?\n\s+at /);
+
+            await expect(waitForExit(output.closed)).rejects.toThrow('Timed out waiting for the preload process to exit');
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
     it('closes the agent only once when it receives multiple signals', async () => {
         const app = spawnPreloadedApp(
             'aut-server-multiple-signals.js',

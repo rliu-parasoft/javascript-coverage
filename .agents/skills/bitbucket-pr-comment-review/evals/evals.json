@@ -1,0 +1,23 @@
+{
+  "skill_name": "bitbucket-pr-comment-review",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Evaluate the review comments on https://trove.parasoft.com/projects/RUS/repos/parser/pull-requests/19/overview and tell me whether each concern is valid. If one is valid, propose concrete code changes.",
+      "expected_output": "Extracts PR comments, evaluates each claim against code/tests, and provides verdicts with concrete recommendations.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "There is a Parasoft Automated Agent comment saying our fallback edge logic is unsound. Read the Bitbucket PR comments and decide if we should patch now or rebut in-thread.",
+      "expected_output": "Fetches comments, verifies technical correctness from repository evidence, and outputs a clear patch-vs-rebuttal decision.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Review comments for this Bitbucket PR and if a reviewer concern is correct, implement the smallest safe fix and run focused tests before reporting back.",
+      "expected_output": "Performs comment assessment plus minimal implementation and validation when appropriate.",
+      "files": []
+    }
+  ]
+}

@@ -51,10 +51,14 @@ lombok.config
 # IDE
 /.vscode
 /.agents/*
+!/.agents/agents.md
+!/.agents/agents/
 !/.agents/skills/
 /.agents/skills/*
 !/.agents/skills/regression-parasoft-istanbul-lib-instrument
 !/.agents/skills/evidence-backed-verification
+!/.agents/skills/code-review
+!/.agents/skills/bitbucket-pr-comment-review
 /.agent
 /.windsurf
 /.claude

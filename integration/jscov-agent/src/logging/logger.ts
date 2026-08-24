@@ -70,13 +70,11 @@ export class LoggerProvider {
             format: fileFormat,
             transports: [new transports.File({ filename: reserveAgentLogFile(config.runtimeData) })]
         });
-        this.consoleLogger = config.silentMode
-            ? undefined
-            : createLogger({
-                level: 'info',
-                format: consoleFormat,
-                transports: [new transports.Console({ stderrLevels: [] })]
-            });
+        this.consoleLogger = createLogger({
+            level: config.silentMode ? 'error' : 'info',
+            format: consoleFormat,
+            transports: [new transports.Console({ stderrLevels: [] })]
+        });
     }
 
     static initialize(config: AgentConfig): void {

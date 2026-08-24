@@ -168,7 +168,12 @@ describe('LoggerProvider', () => {
             expect(fileContents).toContain('[JSCOV-AGENT][ERROR]');
 
             if (silentMode) {
-                expect(output).toBe('');
+                expect(output).toContain('[JSCOV-AGENT][ERROR]: console error');
+                expect(output).not.toContain(`${i18n.t('agent_initializing')}\n`);
+                expect(output).not.toContain('[JSCOV-AGENT][DEBUG]');
+                expect(output).not.toContain('[JSCOV-AGENT][INFO]');
+                expect(output).not.toContain('[JSCOV-AGENT][WARN]');
+                expect(output).not.toMatch(/\n(?:Error|RangeError|TypeError)[^\r\n]*\r?\n\s+at /);
             } else {
                 expect(output).toContain(`${i18n.t('agent_initializing')}\n`);
                 expect(output).toContain('[JSCOV-AGENT][INFO]: console info');
@@ -182,25 +187,42 @@ describe('LoggerProvider', () => {
         }
     });
 
-    it('suppresses console and writes file only when silentMode=true', async () => {
+    it('writes only ERROR to console and keeps file diagnostics when silentMode=true', async () => {
         const writes: string[] = [];
-        const spy = vi.spyOn(process.stdout, 'write').mockImplementation((data) => { writes.push(String(data)); return true; });
+        const stdout = (console as WinstonConsole)._stdout;
+        const processStdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation((data) => {
+            writes.push(String(data));
+            return true;
+        });
+        const consoleStdoutSpy = vi.spyOn(stdout, 'write').mockImplementation((data) => {
+            writes.push(String(data));
+            return true;
+        });
         try {
             LoggerProvider.initialize(makeConfig(runtimeData, { debug: true, silentMode: true }));
-            const logger = LoggerProvider.console;
+            LoggerProvider.writeBanner();
             LoggerProvider.file.debug('debug detail');
             LoggerProvider.file.error('failure');
-            logger.debug('debug detail');
-            logger.error('failure');
+            LoggerProvider.console.debug('console debug');
+            LoggerProvider.console.info('console info');
+            LoggerProvider.console.warn('console warn');
+            LoggerProvider.console.error('failure');
             await LoggerProvider.close();
 
-            expect(writes.join('')).not.toContain('[JSCOV-AGENT]');
+            const output = writes.join('');
+            expect(output).toContain('[JSCOV-AGENT][ERROR]: failure');
+            expect(output).not.toContain(i18n.t('agent_initializing'));
+            expect(output).not.toContain('[JSCOV-AGENT][DEBUG]');
+            expect(output).not.toContain('[JSCOV-AGENT][INFO]');
+            expect(output).not.toContain('[JSCOV-AGENT][WARN]');
+            expect(output).not.toMatch(/\n(?:Error|RangeError|TypeError)[^\r\n]*\r?\n\s+at /);
 
             const fileContents = readFileSync(findAgentLogFile(runtimeData), 'utf8');
             expect(fileContents).toContain('[JSCOV-AGENT][DEBUG]');
             expect(fileContents).toContain('[JSCOV-AGENT][ERROR]');
         } finally {
-            spy.mockRestore();
+            processStdoutSpy.mockRestore();
+            consoleStdoutSpy.mockRestore();
         }
     });
 

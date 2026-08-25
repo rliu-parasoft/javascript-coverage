@@ -1,5 +1,6 @@
 import { parseCommandLine, readSettingsFile, resolveConfiguration, type AgentConfig } from './configuration/config.js';
 import { LoggerProvider } from './logging/logger.js';
+import { writeAgentVersionManifest } from './agent-info.js';
 import i18n from './i18n.js';
 import { RestServiceStartupError, SessionAutostartError, startAgent, type StartedAgent } from './server/server.js';
 import { DEFAULT_USER_ID } from './session/session-service.js';
@@ -11,6 +12,7 @@ if (config) {
 }
 
 function resolveAgentConfiguration(): AgentConfig | undefined {
+    let loggerInitialized = false;
     try {
         const commandLine = parseCommandLine(process.argv.slice(2));
         process.argv.splice(2, process.argv.length - 2, ...commandLine.targetArgs);
@@ -30,6 +32,8 @@ function resolveAgentConfiguration(): AgentConfig | undefined {
         }
         if (resolution.config) {
             LoggerProvider.initialize(resolution.config);
+            loggerInitialized = true;
+            writeAgentVersionManifest(resolution.config.runtimeData);
             LoggerProvider.writeBanner();
             resolution.diagnostics.forEach((message) => LoggerProvider.file.debug(message));
             LoggerProvider.file.debug(
@@ -39,7 +43,13 @@ function resolveAgentConfiguration(): AgentConfig | undefined {
         }
         return resolution.config;
     } catch (error) {
-        process.stderr.write(`[JSCOV-AGENT][ERROR]: ${errorMessage(error)}\n`);
+        if (loggerInitialized) {
+            const message = errorMessage(error);
+            LoggerProvider.file.error(message, error instanceof Error ? error : undefined);
+            LoggerProvider.console.error(message);
+        } else {
+            process.stderr.write(`[JSCOV-AGENT][ERROR]: ${errorMessage(error)}\n`);
+        }
         LoggerProvider.close();
         return undefined;
     }

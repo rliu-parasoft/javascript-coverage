@@ -29,5 +29,7 @@
     "settings_file_not_json_object": "代理设置文件不包含 JSON 对象：{{path}}",
     "runtime_data_missing": "未设置代理运行时数据目录 - 缺少 'jscov.agent.runtimeData' 参数！",
     "runtime_data_not_directory": "代理运行时数据配置不是目录：{{path}}",
-    "runtime_data_cannot_be_created": "无法创建代理运行时数据目录：{{path}}。"
+    "runtime_data_cannot_be_created": "无法创建代理运行时数据目录：{{path}}。",
+    "agent_version_manifest_cannot_be_written": "无法创建 Agent 版本文件：{{path}}",
+    "agent_version_manifest_symbolic_link": "Agent 版本文件不得为符号链接：{{path}}"
 }

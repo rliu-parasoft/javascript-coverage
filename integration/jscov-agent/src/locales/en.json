@@ -29,5 +29,7 @@
     "settings_file_not_json_object": "Agent settings file does not contain a JSON object: {{path}}",
     "runtime_data_missing": "Agent runtime data directory was not set - the 'jscov.agent.runtimeData' parameter is missing!",
     "runtime_data_not_directory": "Agent runtime data configuration is not a directory: {{path}}",
-    "runtime_data_cannot_be_created": "Agent runtime data directory cannot be created: {{path}}."
+    "runtime_data_cannot_be_created": "Agent runtime data directory cannot be created: {{path}}.",
+    "agent_version_manifest_cannot_be_written": "Unable to create agent version file: {{path}}",
+    "agent_version_manifest_symbolic_link": "Agent version file must not be a symbolic link: {{path}}"
 }

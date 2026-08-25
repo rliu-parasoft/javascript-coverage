@@ -13,6 +13,10 @@
 
 - Tests must not assume a single language; generate localized message expectations through i18n resources.
 
+## Localization
+
+- When changing a user-facing i18n message, update every supported locale with equivalent meaning and consistent terminology.
+
 ## Repository Knowledge
 
 - When a task may need repository structural facts or domain details, read `ARCHITECTURE.md` first. It is the lightweight entry point that routes current behavior to `docs/domain/` and accepted future direction to `docs/design/`; from there, conditionally load only the specific documents the task needs.

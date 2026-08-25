@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { once } from 'node:events';
 import { describe, expect, it } from 'vitest';
+import packageInfo from '../package.json' with { type: 'json' };
 import i18n from '../src/i18n.js';
 import { DEFAULT_USER_ID } from '../src/session/session-service.js';
 
@@ -144,6 +145,10 @@ describe('agent preload', () => {
                 .toBeLessThan(output.stdout().indexOf('AUT_SERVER_ENTERED'));
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
             expect(output.stdout()).toContain(i18n.t('agent_initializing'));
+            expect(JSON.parse(readFileSync(join(app.isolatedRoot, 'runtime-data', 'version.json'), 'utf8'))).toEqual({
+                schemaVersion: '1.0',
+                toolVersion: packageInfo.version
+            });
 
             const deadline = Date.now() + 5_000;
             let response: Response | undefined;
@@ -159,6 +164,27 @@ describe('agent preload', () => {
             const sessionFiles = readdirSync(join(app.isolatedRoot, 'runtime-data', '__default__'))
                 .filter((file) => file.endsWith('.json'));
             expect(sessionFiles).toHaveLength(1);
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
+    it('overwrites an existing runtime data version manifest', async () => {
+        const app = spawnPreloadedApp('aut-server.js', [], (_isolatedRoot, runtimeData) => {
+            mkdirSync(runtimeData, { recursive: true });
+            writeFileSync(join(runtimeData, 'version.json'), '{"toolVersion":"stale"}');
+            return ['--jscov.agent.runtimeData', runtimeData];
+        });
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            const manifestPath = join(app.isolatedRoot, 'runtime-data', 'version.json');
+            expect(JSON.parse(readFileSync(manifestPath, 'utf8'))).toEqual({
+                schemaVersion: '1.0',
+                toolVersion: packageInfo.version
+            });
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);
@@ -227,7 +253,7 @@ describe('agent preload', () => {
         }
     }, 10_000);
 
-    it('reports missing runtime data without emitting diagnostics to the console', async () => {
+    it('reports missing runtime data without preventing the target from running', async () => {
         const app = spawnPreloadedApp('aut-server.js', [], () => ['--jscov.agent.debug=true']);
         const output = collectOutput(app.child);
 
@@ -235,6 +261,148 @@ describe('agent preload', () => {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][DEBUG]:');
             expect(output.stderr()).toContain(`[JSCOV-AGENT][ERROR]: ${i18n.t('runtime_data_missing')}`);
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
+    it('reports an lstatSync I/O failure on the manifest path without preventing the target from running', async () => {
+        const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot, runtimeData) => {
+            mkdirSync(runtimeData, { recursive: true });
+            const manifestPath = join(runtimeData, 'version.json');
+            writeFileSync(join(isolatedRoot, 'lstat-failure-agent.js'), `
+                import fs from 'node:fs';
+                import { syncBuiltinESMExports } from 'node:module';
+
+                const originalLstatSync = fs.lstatSync;
+                fs.lstatSync = (path, options) => {
+                    if (path === ${JSON.stringify(manifestPath)}) {
+                        throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+                    }
+                    return originalLstatSync(path, options);
+                };
+                syncBuiltinESMExports();
+                await import('./agent.js');
+            `);
+            return ['--jscov.agent.runtimeData', runtimeData];
+        }, 'lstat-failure-agent.js');
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            const runtimeData = join(app.isolatedRoot, 'runtime-data');
+            const [logFile] = readdirSync(runtimeData)
+                .filter((file) => /^agent-\d{6}-\d{10}\.log$/.test(file));
+            const logContents = await waitForLogContent(join(runtimeData, logFile), 'EACCES');
+            expect(logContents).toContain('EACCES');
+            expect(output.stdout()).toContain('EACCES');
+            expect(output.stderr()).not.toContain('EACCES');
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
+    it('reports a symbolic-link runtime data manifest without preventing the target from running', async () => {
+        const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot, runtimeData) => {
+            mkdirSync(runtimeData, { recursive: true });
+            const manifestPath = join(runtimeData, 'version.json');
+            writeFileSync(join(isolatedRoot, 'symbolic-link-agent.js'), `
+                import fs from 'node:fs';
+                import { syncBuiltinESMExports } from 'node:module';
+
+                const originalLstatSync = fs.lstatSync;
+                fs.lstatSync = (path, options) => path === ${JSON.stringify(manifestPath)}
+                    ? { isSymbolicLink: () => true }
+                    : originalLstatSync(path, options);
+                syncBuiltinESMExports();
+                await import('./agent.js');
+            `);
+            return ['--jscov.agent.runtimeData', runtimeData];
+        }, 'symbolic-link-agent.js');
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            const manifestError = i18n.t('agent_version_manifest_symbolic_link', {
+                path: join(app.isolatedRoot, 'runtime-data', 'version.json')
+            });
+            const runtimeData = join(app.isolatedRoot, 'runtime-data');
+            const [logFile] = readdirSync(runtimeData)
+                .filter((file) => /^agent-\d{6}-\d{10}\.log$/.test(file));
+            const logContents = await waitForLogContent(join(runtimeData, logFile), manifestError);
+            expect(logContents).toContain(`Error: ${manifestError}`);
+            expect(output.stdout()).toContain(manifestError);
+            expect(output.stderr()).not.toContain(manifestError);
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
+    it('reports an unwritable runtime data manifest without preventing the target from running', async () => {
+        const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot, runtimeData) => {
+            const manifestPath = join(runtimeData, 'version.json');
+            writeFileSync(join(isolatedRoot, 'manifest-write-failure-agent.js'), `
+                import fs from 'node:fs';
+                import { syncBuiltinESMExports } from 'node:module';
+
+                const originalWriteFileSync = fs.writeFileSync;
+                fs.writeFileSync = (path, ...args) => {
+                    if (path === ${JSON.stringify(manifestPath)}) {
+                        throw new Error('EACCES');
+                    }
+                    return originalWriteFileSync(path, ...args);
+                };
+                syncBuiltinESMExports();
+                await import('./agent.js');
+            `);
+            return ['--jscov.agent.runtimeData', runtimeData];
+        }, 'manifest-write-failure-agent.js');
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            const manifestError = i18n.t('agent_version_manifest_cannot_be_written', {
+                path: join(app.isolatedRoot, 'runtime-data', 'version.json')
+            });
+            const runtimeData = join(app.isolatedRoot, 'runtime-data');
+            const [logFile] = readdirSync(runtimeData)
+                .filter((file) => /^agent-\d{6}-\d{10}\.log$/.test(file));
+            const logContents = await waitForLogContent(join(runtimeData, logFile), manifestError);
+            expect(logContents).toContain(`Error: ${manifestError}`);
+            expect(output.stdout()).toContain(manifestError);
+            expect(output.stderr()).not.toContain(manifestError);
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
+    it('reports logger initialization failure without preventing the target from running', async () => {
+        const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot, runtimeData) => {
+            writeFileSync(join(isolatedRoot, 'logger-initialization-failure-agent.js'), `
+                import fs from 'node:fs';
+                import { syncBuiltinESMExports } from 'node:module';
+
+                const originalOpenSync = fs.openSync;
+                fs.openSync = (path, ...args) => {
+                    if (typeof path === 'string' && path.startsWith(${JSON.stringify(runtimeData)})) {
+                        throw new Error('EACCES');
+                    }
+                    return originalOpenSync(path, ...args);
+                };
+                syncBuiltinESMExports();
+                await import('./agent.js');
+            `);
+            return ['--jscov.agent.runtimeData', runtimeData];
+        }, 'logger-initialization-failure-agent.js');
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
+            expect(output.stderr()).toContain('EACCES');
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);

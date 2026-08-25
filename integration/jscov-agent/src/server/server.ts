@@ -18,7 +18,9 @@ export class RestServiceStartupError extends Error {
 
     constructor(port: number, error: unknown) {
         const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
-        const detail = code === 'EACCES' || code === 'EADDRINUSE'
+        const detail = code === 'ERR_SOCKET_BAD_PORT'
+            ? i18n.t('agent_rest_invalid_port', { port })
+            : code === 'EACCES' || code === 'EADDRINUSE'
             ? i18n.t('agent_rest_port_unavailable', { port })
             : error instanceof Error
                 ? error.message

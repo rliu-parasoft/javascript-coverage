@@ -396,6 +396,20 @@ describe('startAgent', () => {
 
         expect(error.message).toBe(i18n.t('agent_rest_service_start_failed', { detail }));
     });
+
+    it('wraps invalid REST port errors with a user-facing message', () => {
+        const underlyingError = Object.assign(
+            new RangeError('options.port should be >= 0 and < 65536. Received type number (-1).'),
+            { code: 'ERR_SOCKET_BAD_PORT' }
+        );
+        const error = new RestServiceStartupError(-1, underlyingError);
+        const detail = i18n.t('agent_rest_invalid_port', { port: -1 });
+
+        expect(error.message).toBe(i18n.t('agent_rest_service_start_failed', { detail }));
+        expect(error.message).not.toContain(underlyingError.message);
+        expect(error.underlyingError).toBe(underlyingError);
+    });
+
     it('retains the configured nonzero server port', async () => {
         const port = await findAvailablePort();
         const { agent } = await startTestAgent({ restServerPort: port });

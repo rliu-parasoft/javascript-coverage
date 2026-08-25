@@ -494,17 +494,21 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('logs an agent server startup error without preventing the AUT from running', async () => {
+        const invalidPort = -1;
         const app = spawnPreloadedApp('aut-server.js', [
             '--jscov.agent.restServerEnabled=true',
-            '--jscov.agent.restServerPort=-1'
+            `--jscov.agent.restServerPort=${invalidPort}`
         ]);
         const output = collectOutput(app.child);
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
-            const startupFailure = i18n.t('agent_rest_service_start_failed', { detail: '' }).trimEnd();
+            const startupFailure = i18n.t('agent_rest_service_start_failed', {
+                detail: i18n.t('agent_rest_invalid_port', { port: invalidPort })
+            });
             await waitForOutput(output.stdout, output.stderr, `[JSCOV-AGENT][ERROR]: ${startupFailure}`);
             expect(output.stdout()).toContain(`[JSCOV-AGENT][ERROR]: ${startupFailure}`);
+            expect(output.stdout()).not.toContain('options.port should be');
             expect(output.stderr()).not.toContain('[JSCOV-AGENT][ERROR]:');
             const runtimeData = join(app.isolatedRoot, 'runtime-data');
             const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-000001-\d{10}\.log$/.test(file));
@@ -520,19 +524,23 @@ describe('agent preload', () => {
     }, 10_000);
 
     it('logs a REST startup ERROR to stdout in silent mode and keeps file diagnostics', async () => {
+        const invalidPort = -1;
         const app = spawnPreloadedApp('aut-server.js', [
             '--jscov.agent.restServerEnabled=true',
-            '--jscov.agent.restServerPort=-1',
+            `--jscov.agent.restServerPort=${invalidPort}`,
             '--jscov.agent.silentMode=true'
         ]);
         const output = collectOutput(app.child);
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
-            const startupFailure = i18n.t('agent_rest_service_start_failed', { detail: '' }).trimEnd();
+            const startupFailure = i18n.t('agent_rest_service_start_failed', {
+                detail: i18n.t('agent_rest_invalid_port', { port: invalidPort })
+            });
             await waitForOutput(output.stdout, output.stderr, `[JSCOV-AGENT][ERROR]: ${startupFailure}`);
 
             expect(output.stdout()).toContain(`[JSCOV-AGENT][ERROR]: ${startupFailure}`);
+            expect(output.stdout()).not.toContain('options.port should be');
             expect(output.stdout()).not.toContain(i18n.t('agent_initializing'));
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][INFO]');
             expect(output.stdout()).not.toContain('[JSCOV-AGENT][WARN]');

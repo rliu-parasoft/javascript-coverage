@@ -4,6 +4,7 @@
     "agent_shutdown_failed": "Parasoft JavaScript 运行时覆盖率代理关闭失败：",
     "agent_started": "Parasoft JavaScript 运行时覆盖率代理已在端口 {{port}} 启动",
     "agent_rest_service_start_failed": "启动服务失败：{{detail}}",
+    "agent_rest_invalid_port": "配置的代理服务器端口 {{port}} 无效。使用 0 到 65535 之间的值。",
     "agent_rest_port_unavailable": "端口 {{port}} 不可用。",
     "session_started_diagnostic": "已为用户 '{{userId}}' 启动会话 '{{session}}'",
     "session_already_started": "用户 '{{userId}}' 的会话 '{{session}}' 已启动",

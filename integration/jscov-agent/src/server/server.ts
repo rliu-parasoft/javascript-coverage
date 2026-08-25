@@ -6,7 +6,7 @@ import { createRoutes } from './routes.js';
 import { LoggerProvider } from '../logging/logger.js';
 import i18n from '../i18n.js';
 import { getResponseLogMessage } from '../utils.js';
-import { SessionService } from '../session/session-service.js';
+import { DEFAULT_USER_ID, SessionService } from '../session/session-service.js';
 
 export interface StartedAgent {
     port: number;
@@ -29,11 +29,25 @@ export class RestServiceStartupError extends Error {
     }
 }
 
+export class SessionAutostartError extends Error {
+    readonly underlyingError: unknown;
+
+    constructor(error: unknown) {
+        super('Automatic session start failed');
+        this.name = 'SessionAutostartError';
+        this.underlyingError = error;
+    }
+}
+
 export async function startAgent(config: AgentConfig): Promise<StartedAgent> {
     const sessions = new SessionService(config.runtimeData);
     if (config.sessionAutostart) {
-        const session = sessions.startSession();
-        LoggerProvider.file.debug(i18n.t('session_started', { session }));
+        try {
+            const session = sessions.startSession();
+            LoggerProvider.file.debug(i18n.t('session_started_diagnostic', { session, userId: DEFAULT_USER_ID }));
+        } catch (error) {
+            throw new SessionAutostartError(error);
+        }
     }
 
     if (!config.restServerEnabled) {

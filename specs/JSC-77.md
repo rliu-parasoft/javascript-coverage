@@ -152,7 +152,7 @@ Add GET and POST `/session/start` APIs that start one default-user runtime cover
 - The server clears supported execution-hit information (`s`, `f`, and `b`) from the process coverage global before data collection begins; `bT` remains unchanged until its semantics are defined. An absent coverage global is treated as an empty, valid coverage state. (inferred)
 - The server creates the default-user directory and an empty JSON file, records the selected session as active, and responds with HTTP 200 and `{ "session": "<sessionId>" }`.
 - The reserved JSON file initially contains `{}` and is parseable before any later coverage data is written.
-- A second start while the default-user session is active makes no reset or file changes and responds with HTTP 400 and `{ "messageCode": 150, "message": "Session is already started" }`.
+- A second start while the default-user session is active makes no reset or file changes and responds with HTTP 400 and the localized message `Session '<sessionId>' is already started for user '__default__'` with message code `150`.
 - A duplicate start preserves all existing process hit counters (`s`, `f`, `b`, and `bT`) as well as session/file state. (inferred)
 - A concurrent start while the default-user session is still being prepared follows the same HTTP 400/150 contract and cannot create a second session file. (inferred)
 - A failure while preparing a new session responds with HTTP 500 and `{ "messageCode": 500, "message": "<error message>" }`; it must not leave the session marked active. (inferred)

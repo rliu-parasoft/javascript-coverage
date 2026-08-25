@@ -7,6 +7,7 @@ import { resolveConfiguration, type AgentConfig } from '../../src/configuration/
 import i18n from '../../src/i18n.js';
 import { LoggerProvider } from '../../src/logging/logger.js';
 import { RestServiceStartupError, startAgent, type StartedAgent } from '../../src/server/server.js';
+import { DEFAULT_USER_ID } from '../../src/session/session-service.js';
 
 describe('startAgent', () => {
     const agents: StartedAgent[] = [];
@@ -75,13 +76,16 @@ describe('startAgent', () => {
     it('autostarts one default-user session before serving the REST API', async () => {
         const { runtimeData, url } = await startTestAgent({ sessionAutostart: true });
 
-        expect(readdirSync(join(runtimeData, '__default__'))).toHaveLength(1);
+        const [session] = readdirSync(join(runtimeData, '__default__')).map((file) => file.replace(/\.json$/, ''));
+        if (!session) {
+            throw new Error('Expected the autostarted session file.');
+        }
 
         const response = await fetch(url);
         expect(response.status).toBe(400);
         expect(await response.json()).toEqual({
             messageCode: 150,
-            message: i18n.t('session_already_started')
+            message: i18n.t('session_already_started', { session, userId: DEFAULT_USER_ID })
         });
         expect(readdirSync(join(runtimeData, '__default__'))).toHaveLength(1);
     });
@@ -331,7 +335,6 @@ describe('startAgent', () => {
     it('returns the agent identity from GET /info', async () => {
         const { baseUrl } = await startTestAgent({
             settings: undefined,
-            runtimeData: 'unused-by-server',
             sessionAutostart: true,
             restServerEnabled: true,
             restServerPort: 0,
@@ -443,7 +446,8 @@ describe('startAgent', () => {
         expect(response.status).toBe(200);
         await LoggerProvider.close();
         const contents = readLoggerOutput();
-        expect(contents).toMatch(/Started session runtime_coverage_/);
+        expect(contents).toMatch(/Started session 'runtime_coverage_/);
+        expect(contents).toContain(DEFAULT_USER_ID);
     });
 
     it('does not write session-start diagnostics when debug logging is disabled', async () => {
@@ -453,34 +457,52 @@ describe('startAgent', () => {
         expect((await fetch(url, { method: 'POST' })).status).toBe(400);
         await LoggerProvider.close();
         const contents = readLoggerOutput();
-        expect(contents).not.toContain('Started session runtime_coverage_');
-        expect(contents).not.toContain('Session is already started');
+        expect(contents).not.toContain(i18n.t('session_started_diagnostic', { session: '', userId: DEFAULT_USER_ID }));
+        expect(contents).not.toContain(i18n.t('session_already_started', { session: '', userId: DEFAULT_USER_ID }));
     });
 
     it('returns the duplicate contract without creating another session file', async () => {
         await configureLogger(true);
         const log = vi.spyOn(LoggerProvider.file, 'debug');
+        const consoleInfo = vi.spyOn(LoggerProvider.console, 'info');
         const { runtimeData, url } = await startTestAgent({ debug: true });
-        await fetch(url);
+        const start = await fetch(url);
+        const { session } = await start.json() as { session: string };
         log.mockClear();
 
         const response = await fetch(url, { method: 'POST' });
 
         expect(response.status).toBe(400);
-        expect(await response.json()).toEqual({ messageCode: 150, message: 'Session is already started' });
+        const responseBody = await response.json() as { messageCode: number; message: string };
+        expect(responseBody).toEqual({
+            messageCode: 150,
+            message: i18n.t('session_already_started', { session, userId: DEFAULT_USER_ID })
+        });
+        expect(responseBody.message).toContain(session);
         expect(readdirSync(join(runtimeData, '__default__'))).toHaveLength(1);
-        expect(log).toHaveBeenCalledWith('Session is already started');
+        expect(log).toHaveBeenCalledWith(i18n.t('session_already_started', {
+            session,
+            userId: DEFAULT_USER_ID
+        }));
+        expect(consoleInfo).not.toHaveBeenCalledWith(i18n.t('session_already_started', {
+            session,
+            userId: DEFAULT_USER_ID
+        }));
     });
 
     it('localizes the duplicate session-start response', async () => {
         await i18n.changeLanguage('zh');
         const { url } = await startTestAgent();
-        await fetch(url);
+        const start = await fetch(url);
+        const { session } = await start.json() as { session: string };
 
         const response = await fetch(url, { method: 'POST' });
 
         expect(response.status).toBe(400);
-        expect(await response.json()).toEqual({ messageCode: 150, message: '会话已启动' });
+        expect(await response.json()).toEqual({
+            messageCode: 150,
+            message: i18n.t('session_already_started', { session, userId: DEFAULT_USER_ID })
+        });
     });
 
     it('preserves coverage hits on a duplicate session start', async () => {
@@ -488,7 +510,8 @@ describe('startAgent', () => {
         const hadCoverage = Object.hasOwn(coverageGlobal, '__coverage__');
         const previousCoverage = coverageGlobal.__coverage__;
         const { url } = await startTestAgent();
-        await fetch(url);
+        const start = await fetch(url);
+        const { session } = await start.json() as { session: string };
         coverageGlobal.__coverage__ = {
             '/app.js': {
                 s: { '0': 3 }, f: { '0': 2 },
@@ -500,7 +523,10 @@ describe('startAgent', () => {
             const response = await fetch(url, { method: 'POST' });
 
             expect(response.status).toBe(400);
-            expect(await response.json()).toEqual({ messageCode: 150, message: 'Session is already started' });
+            expect(await response.json()).toEqual({
+                messageCode: 150,
+                message: i18n.t('session_already_started', { session, userId: DEFAULT_USER_ID })
+            });
             expect(coverageGlobal.__coverage__).toEqual({
                 '/app.js': {
                     s: { '0': 3 }, f: { '0': 2 },
@@ -525,6 +551,171 @@ describe('startAgent', () => {
         expect(readdirSync(join(runtimeData, '__default__'))).toHaveLength(1);
     });
 
+    it.each(['GET', 'POST'] as const)('%s /session/stop persists the active session', async (method) => {
+        const coverageGlobal = globalThis as typeof globalThis & { __coverage__?: unknown };
+        const hadCoverage = Object.hasOwn(coverageGlobal, '__coverage__');
+        const previousCoverage = coverageGlobal.__coverage__;
+        const { runtimeData, baseUrl, url } = await startTestAgent();
+        const stopUrl = new URL('/session/stop', baseUrl);
+        const start = await fetch(url);
+        const { session } = await start.json() as { session: string };
+        coverageGlobal.__coverage__ = { '/app.js': { s: { '0': 3 } } };
+
+        try {
+            const response = await fetch(stopUrl, { method });
+
+            expect(response.status).toBe(200);
+            expect(await response.json()).toEqual({ session: null });
+            expect(JSON.parse(readFileSync(join(runtimeData, '__default__', `${session}.json`), 'utf8')))
+                .toEqual({ '/app.js': { s: { '0': 3 } } });
+        } finally {
+            if (hadCoverage) {
+                coverageGlobal.__coverage__ = previousCoverage;
+            } else {
+                delete coverageGlobal.__coverage__;
+            }
+        }
+    });
+
+    it('returns the not-started contract when automatic start is enabled', async () => {
+        const consoleInfo = vi.spyOn(LoggerProvider.console, 'info');
+        const { baseUrl } = await startTestAgent({ sessionAutostart: true });
+        const stopUrl = new URL('/session/stop', baseUrl);
+
+        expect((await fetch(stopUrl)).status).toBe(200);
+
+        const response = await fetch(stopUrl);
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({
+            messageCode: 200,
+            message: i18n.t('session_not_started', { userId: DEFAULT_USER_ID })
+        });
+        expect(consoleInfo).not.toHaveBeenCalledWith(i18n.t('session_not_started', { userId: DEFAULT_USER_ID }));
+    });
+
+    it('logs the standard not-started stop diagnostic', async () => {
+        await configureLogger(true);
+        const { baseUrl } = await startTestAgent({ debug: true, sessionAutostart: true });
+        const stopUrl = new URL('/session/stop', baseUrl);
+        const log = vi.spyOn(LoggerProvider.file, 'debug');
+        log.mockClear();
+
+        expect((await fetch(stopUrl)).status).toBe(200);
+        log.mockClear();
+
+        await fetch(stopUrl);
+
+        expect(log).toHaveBeenCalledWith(i18n.t('session_not_started', {
+            userId: DEFAULT_USER_ID
+        }));
+    });
+
+    it('returns the user-not-found contract when automatic start is disabled', async () => {
+        const { baseUrl } = await startTestAgent({ sessionAutostart: false });
+
+        const response = await fetch(new URL('/session/stop', baseUrl));
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({
+            messageCode: 103,
+            message: i18n.t('session_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+    });
+
+    it('logs the user-not-found stop diagnostic', async () => {
+        await configureLogger(true);
+        const { baseUrl } = await startTestAgent({ debug: true, sessionAutostart: false });
+        const log = vi.spyOn(LoggerProvider.file, 'debug');
+        log.mockClear();
+
+        await fetch(new URL('/session/stop', baseUrl));
+
+        expect(log).toHaveBeenCalledWith(i18n.t('session_user_not_found', {
+            userId: DEFAULT_USER_ID
+        }));
+    });
+
+    it('returns the standard not-started contract after a manually stopped session', async () => {
+        const { baseUrl, url } = await startTestAgent({ sessionAutostart: false });
+        const stopUrl = new URL('/session/stop', baseUrl);
+
+        expect((await fetch(url)).status).toBe(200);
+        expect((await fetch(stopUrl)).status).toBe(200);
+
+        const response = await fetch(stopUrl);
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({
+            messageCode: 200,
+            message: i18n.t('session_not_started', { userId: DEFAULT_USER_ID })
+        });
+    });
+
+    it('localizes the session-stop 404 responses', async () => {
+        await i18n.changeLanguage('zh');
+        const autoStartEnabled = await startTestAgent({ sessionAutostart: true });
+        const autoStartDisabled = await startTestAgent({ sessionAutostart: false });
+        const autoStartEnabledStopUrl = new URL('/session/stop', autoStartEnabled.baseUrl);
+
+        expect((await fetch(autoStartEnabledStopUrl)).status).toBe(200);
+
+        const [notStarted, userNotFound] = await Promise.all([
+            fetch(autoStartEnabledStopUrl),
+            fetch(new URL('/session/stop', autoStartDisabled.baseUrl))
+        ]);
+
+        expect(notStarted.status).toBe(404);
+        expect(await notStarted.json()).toEqual({
+            messageCode: 200,
+            message: i18n.t('session_not_started', { userId: DEFAULT_USER_ID })
+        });
+        expect(userNotFound.status).toBe(404);
+        expect(await userNotFound.json()).toEqual({
+            messageCode: 103,
+            message: i18n.t('session_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+    });
+
+    it('allows only one concurrent default-user stop', async () => {
+        await configureLogger(true);
+        const { baseUrl, url } = await startTestAgent({ debug: true });
+        const stopUrl = new URL('/session/stop', baseUrl);
+        await fetch(url);
+        const log = vi.spyOn(LoggerProvider.file, 'debug');
+        log.mockClear();
+
+        const responses = await Promise.all([
+            fetch(stopUrl),
+            fetch(stopUrl, { method: 'POST' })
+        ]);
+
+        expect((await Promise.all(responses.map((response) => response.status))).sort()).toEqual([200, 404]);
+        expect(log).toHaveBeenCalledWith(i18n.t('session_not_started', {
+            userId: DEFAULT_USER_ID
+        }));
+    });
+
+    it('returns the internal-error contract and retains the session after stop persistence fails', async () => {
+        const consoleError = vi.spyOn(LoggerProvider.console, 'error');
+        const { runtimeData, baseUrl, url } = await startTestAgent();
+        const stopUrl = new URL('/session/stop', baseUrl);
+        const userDirectory = join(runtimeData, '__default__');
+        const start = await fetch(url);
+        const { session } = await start.json() as { session: string };
+        rmSync(userDirectory, { recursive: true });
+        writeFileSync(userDirectory, 'not a directory');
+
+        const failed = await fetch(stopUrl);
+
+        expect(failed.status).toBe(500);
+        const body = await failed.json() as { messageCode: number; message: string };
+        expect(body.messageCode).toBe(500);
+        expect(body.message).toContain(i18n.t('session_stop_failed', { session, userId: DEFAULT_USER_ID }));
+        expect(consoleError).not.toHaveBeenCalledWith(body.message);
+        expect((await fetch(url, { method: 'POST' })).status).toBe(400);
+    });
+
     it('returns the internal-error contract and releases the user after preparation fails', async () => {
         const consoleError = vi.spyOn(LoggerProvider.console, 'error');
         const { runtimeData, url } = await startTestAgent();
@@ -534,14 +725,17 @@ describe('startAgent', () => {
         const failed = await fetch(url);
         expect(failed.status).toBe(500);
         const body = await failed.json() as { messageCode: number; message: string };
-        expect(body).toMatchObject({ messageCode: 500, message: expect.stringMatching(/^Failed to start session: /) });
-        expect(consoleError).toHaveBeenCalledWith(body.message);
+        expect(body.messageCode).toBe(500);
+        expect(body.message).toContain(i18n.t('session_start_failed', { userId: DEFAULT_USER_ID }));
+        expect(consoleError).not.toHaveBeenCalledWith(body.message);
 
         rmSync(userDirectory);
         expect((await fetch(url, { method: 'POST' })).status).toBe(200);
         await LoggerProvider.close();
         const fileOutput = readLoggerOutput();
-        expect(fileOutput).toContain(body.message);
+        expect(fileOutput).toContain(i18n.t('session_start_failed', {
+            userId: DEFAULT_USER_ID
+        }));
         expect(fileOutput).toMatch(/\nError: /);
     });
 

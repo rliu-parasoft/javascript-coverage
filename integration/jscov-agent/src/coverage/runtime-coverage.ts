@@ -1,9 +1,5 @@
 export function clearCoverageHits(): void {
     const coverage = getCoverage();
-    if (!coverage) {
-        return;
-    }
-
     for (const fileCoverage of Object.values(coverage)) {
         if (!isRecord(fileCoverage)) {
             continue;
@@ -14,9 +10,9 @@ export function clearCoverageHits(): void {
     }
 }
 
-function getCoverage(): Record<string, unknown> | undefined {
+export function getCoverage(): Record<string, unknown> {
     const coverage = (globalThis as { __coverage__?: unknown }).__coverage__;
-    return isRecord(coverage) ? coverage : undefined;
+    return isRecord(coverage) ? coverage : {};
 }
 
 function resetCounters(counters: unknown): void {
@@ -49,5 +45,8 @@ function resetBranchCounters(branchCounters: unknown): void {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null;
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return false;
+    }
+    return true;
 }

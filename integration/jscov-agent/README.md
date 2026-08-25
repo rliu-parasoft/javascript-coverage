@@ -64,21 +64,76 @@ Only one default-user session may be active. A duplicate request returns `400`:
 ```json
 {
   "messageCode": 150,
-  "message": "Session is already started"
+  "message": "Session 'runtime_coverage_20260807_1603_0' is already started for user '__default__'"
 }
 ```
 
-If session preparation fails, the server returns `500` with this contract; the
-message contains the underlying error text:
+If session preparation fails, the server returns `500` with a localized,
+contextual error message. The file log retains the error trace for diagnostics:
 
 ```json
 {
   "messageCode": 500,
-  "message": "<error message>"
+  "message": "Failed to start a session for user '__default__': <error message>"
 }
 ```
 
 The agent listens on port `8050`. 
+
+## Session stop
+
+Stop the default-user session with either HTTP method:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8050/session/stop
+Invoke-RestMethod -Method Post http://127.0.0.1:8050/session/stop
+```
+
+After a successful stop, the server returns `200` with the following body:
+
+```json
+{
+  "session": null
+}
+```
+
+Before closing the session, the agent writes the active session's coverage to
+its session JSON file through an atomic replace. The active session is removed
+only after that write succeeds. If persistence fails, the existing session JSON
+file remains valid for retry. Debug and error diagnostics for stopping a session
+identify the user/session or the concrete session-file path while intentionally
+omitting coverage content.
+
+If session persistence fails, the server returns `500` with a localized,
+contextual error message. The file log retains the error trace for diagnostics:
+
+```json
+{
+  "messageCode": 500,
+  "message": "Failed to stop session 'runtime_coverage_20260807_1603_0' for user '__default__': <error message>"
+}
+```
+
+If the default user is known to the running agent but does not have an active
+session, the server returns `404`:
+
+```json
+{
+  "messageCode": 200,
+  "message": "Cannot stop a session for user '__default__' because it was not started"
+}
+```
+
+If the default user has not successfully started a session in the running agent
+process, the server instead returns `404`. This includes a disabled automatic
+start with no successful `/session/start` request:
+
+```json
+{
+  "messageCode": 103,
+  "message": "User '__default__' was not found"
+}
+```
 
 ## Configuration
 

@@ -1,6 +1,11 @@
 import type { AgentDescriptor } from '../agent-info.js';
 import type { AgentConfig } from '../configuration/config.js';
 
+export interface ErrorResponse {
+    messageCode: number;
+    message: string;
+}
+
 export interface StatusResponse {
     session: string | null;
 }

@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { once } from 'node:events';
 import { describe, expect, it } from 'vitest';
 import i18n from '../src/i18n.js';
+import { DEFAULT_USER_ID } from '../src/session/session-service.js';
 
 const moduleRoot = resolve(import.meta.dirname, '..');
 
@@ -444,7 +445,9 @@ describe('agent preload', () => {
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
-            await waitForOutput(output.stdout, output.stderr, `[JSCOV-AGENT][ERROR]: ${i18n.t('agent_startup_failed')}`);
+            await waitForOutput(output.stdout, output.stderr, `[JSCOV-AGENT][ERROR]: ${i18n.t('session_start_failed', {
+                userId: DEFAULT_USER_ID
+            })}`);
             const portMarker = '__PORT__';
             const startupTemplate = i18n.t('agent_started', { port: portMarker });
             const markerIndex = startupTemplate.indexOf(portMarker);

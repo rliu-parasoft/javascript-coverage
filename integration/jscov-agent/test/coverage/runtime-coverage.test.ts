@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { clearCoverageHits } from '../../src/coverage/runtime-coverage.js';
+import { clearCoverageHits, getCoverage } from '../../src/coverage/runtime-coverage.js';
 
 const coverageGlobal = globalThis as typeof globalThis & { __coverage__?: Record<string, unknown> };
 
@@ -45,5 +45,14 @@ describe('runtime coverage', () => {
         delete coverageGlobal.__coverage__;
 
         expect(() => clearCoverageHits()).not.toThrow();
+    });
+
+    it('preserves coverage objects with custom prototypes', () => {
+        const customPrototype = { inherited: 'ignored' };
+        const coverage = Object.create(customPrototype) as Record<string, unknown>;
+        coverage['/app.js'] = { s: { '0': 3 } };
+        coverageGlobal.__coverage__ = coverage;
+
+        expect(getCoverage()).toBe(coverage);
     });
 });

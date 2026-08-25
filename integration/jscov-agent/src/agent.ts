@@ -1,7 +1,8 @@
 import { parseCommandLine, readSettingsFile, resolveConfiguration, type AgentConfig } from './configuration/config.js';
 import { LoggerProvider } from './logging/logger.js';
 import i18n from './i18n.js';
-import { RestServiceStartupError, startAgent, type StartedAgent } from './server/server.js';
+import { RestServiceStartupError, SessionAutostartError, startAgent, type StartedAgent } from './server/server.js';
+import { DEFAULT_USER_ID } from './session/session-service.js';
 import { errorMessage } from './utils.js';
 
 const config = resolveAgentConfiguration();
@@ -50,10 +51,25 @@ async function startAgentWithLifecycle(config: AgentConfig): Promise<void> {
     } catch (error) {
         if (error instanceof RestServiceStartupError) {
             logRestServiceStartupFailure(error);
+        } else if (error instanceof SessionAutostartError) {
+            logSessionAutostartFailure(error.underlyingError);
         } else {
             logLifecycleFailure('startup', error);
         }
         await LoggerProvider.close();
+    }
+}
+
+function logSessionAutostartFailure(error: unknown): void {
+    const baseMessage = i18n.t('session_start_failed', {
+        userId: DEFAULT_USER_ID
+    });
+    const message = `${baseMessage} ${errorMessage(error)}`;
+    LoggerProvider.console.error(message);
+    if (error instanceof Error) {
+        LoggerProvider.file.error(baseMessage, error);
+    } else {
+        LoggerProvider.file.error(message);
     }
 }
 

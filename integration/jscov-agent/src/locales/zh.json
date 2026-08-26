@@ -6,6 +6,8 @@
     "agent_rest_service_start_failed": "启动服务失败：{{detail}}",
     "agent_rest_invalid_port": "配置的代理服务器端口 {{port}} 无效。使用 0 到 65535 之间的值。",
     "agent_rest_port_unavailable": "端口 {{port}} 不可用。",
+    "coverage_user_not_found": "无法获取覆盖率，因为未找到用户 '{{userId}}'",
+    "coverage_read_failed": "获取覆盖率失败：",
     "session_started_diagnostic": "已为用户 '{{userId}}' 启动会话 '{{session}}'",
     "session_already_started": "用户 '{{userId}}' 的会话 '{{session}}' 已启动",
     "session_not_started": "无法停止用户 '{{userId}}' 的会话，因为会话尚未启动",

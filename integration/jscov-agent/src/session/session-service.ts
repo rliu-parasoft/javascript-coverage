@@ -1,6 +1,6 @@
-import { closeSync, lstatSync, mkdirSync, openSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, lstatSync, mkdirSync, openSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { clearCoverageHits, getCoverage } from '../coverage/runtime-coverage.js';
 import i18n from '../i18n.js';
 import { LoggerProvider } from '../logging/logger.js';
@@ -18,8 +18,8 @@ export class SessionAlreadyStartedError extends Error {
 }
 
 export class UserIdNotFoundError extends Error {
-    constructor(userId: string) {
-        super(i18n.t('session_user_not_found', { userId }));
+    constructor(message: string) {
+        super(message);
     }
 }
 
@@ -51,6 +51,27 @@ export class SessionService {
 
     getActiveSession(userId = DEFAULT_USER_ID): string | undefined {
         return this.activeSessionForUsers.get(userId);
+    }
+
+    getLocalSessionNames(userId = DEFAULT_USER_ID): string[] {
+        if (!this.knownUsers.has(userId)) {
+            throw new UserIdNotFoundError(i18n.t('coverage_user_not_found', { userId }));
+        }
+        const userDirectory = this.getUserDirectory(userId);
+        try {
+            if (lstatSync(userDirectory).isSymbolicLink()) {
+                throw new Error(i18n.t('session_user_id_symbolic_link', { userId }));
+            }
+            return readdirSync(userDirectory, { withFileTypes: true })
+                .filter((entry) => entry.isFile())
+                .map((entry) => parse(entry.name).name)
+                .sort();
+        } catch (error) {
+            if (getErrorCode(error) === 'ENOENT') {
+                throw new UserIdNotFoundError(i18n.t('coverage_user_not_found', { userId }));
+            }
+            throw error;
+        }
     }
 
     startSession(userId = DEFAULT_USER_ID): string {
@@ -92,7 +113,7 @@ export class SessionService {
         const sessionId = this.activeSessionForUsers.get(userId);
         if (!sessionId) {
             if (!this.knownUsers.has(userId)) {
-                throw new UserIdNotFoundError(userId);
+                throw new UserIdNotFoundError(i18n.t('session_user_not_found', { userId }));
             }
             throw new CannotStopSessionNotStartedError(userId);
         }

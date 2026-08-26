@@ -73,8 +73,31 @@ contextual error message. The file log retains the error trace for diagnostics:
 
 ```json
 {
-  "messageCode": 500,
+  "messageCode": 701,
   "message": "Failed to start a session for user '__default__': <error message>"
+}
+```
+
+## Coverage files
+
+List direct coverage files for the default user with `GET /coverage`:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8050/coverage
+```
+
+The endpoint reads `runtimeData/__default__/`, where `runtimeData` is the
+effective `jscov.agent.runtimeData` setting. It returns `200` and a
+lexicographically sorted JSON array of file names without their final
+extensions; an empty default-user directory returns `[]`. Subdirectories are
+not returned.
+
+If the default-user directory does not exist, the endpoint returns `404`:
+
+```json
+{
+  "messageCode": 401,
+  "message": "Cannot get coverage because user is not found"
 }
 ```
 
@@ -109,7 +132,7 @@ contextual error message. The file log retains the error trace for diagnostics:
 
 ```json
 {
-  "messageCode": 500,
+  "messageCode": 701,
   "message": "Failed to stop session 'runtime_coverage_20260807_1603_0' for user '__default__': <error message>"
 }
 ```

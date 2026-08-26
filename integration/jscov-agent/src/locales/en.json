@@ -6,6 +6,8 @@
     "agent_rest_service_start_failed": "Failed to start service: {{detail}}",
     "agent_rest_invalid_port": "Configured agent server port {{port}} is invalid. Use a value from 0 to 65535.",
     "agent_rest_port_unavailable": "port {{port}} is unavailable.",
+    "coverage_user_not_found": "Cannot get coverage because user '{{userId}}' was not found",
+    "coverage_read_failed": "Failed to get coverage:",
     "session_started_diagnostic": "Started session '{{session}}' for user '{{userId}}'",
     "session_already_started": "Session '{{session}}' is already started for user '{{userId}}'",
     "session_not_started": "Cannot stop a session for user '{{userId}}' because it was not started",

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
@@ -224,6 +224,90 @@ describe('startAgent', () => {
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ session });
         await expect(fetch('http://[::1]:8050/status')).rejects.toThrow();
+    });
+
+    it('returns sorted direct file names without their final extensions from GET /coverage', async () => {
+        const { baseUrl, runtimeData } = await startTestAgent({ sessionAutostart: true });
+        const userDirectory = join(runtimeData, '__default__');
+        const [session] = readdirSync(userDirectory).map((file) => file.replace(/\.json$/, ''));
+        if (!session) {
+            throw new Error('Expected the autostarted session file.');
+        }
+        mkdirSync(join(userDirectory, 'nested'), { recursive: true });
+        writeFileSync(join(userDirectory, 'zeta.json'), '{}');
+        writeFileSync(join(userDirectory, 'beta.json'), '{}');
+        writeFileSync(join(userDirectory, 'alpha.json'), '{}');
+
+        const response = await fetch(`${baseUrl}/coverage`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual(['alpha', 'beta', session, 'zeta']);
+    });
+
+    it('returns an empty array from GET /coverage for an empty user directory', async () => {
+        const { baseUrl, runtimeData } = await startTestAgent({ sessionAutostart: true });
+        rmSync(join(runtimeData, '__default__'), { recursive: true });
+        mkdirSync(join(runtimeData, '__default__'));
+
+        const response = await fetch(`${baseUrl}/coverage`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual([]);
+    });
+
+    it('returns the missing-user contract from GET /coverage', async () => {
+        const { baseUrl } = await startTestAgent({ sessionAutostart: false });
+
+        const response = await fetch(`${baseUrl}/coverage`);
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({
+            messageCode: 401,
+            message: i18n.t('coverage_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+    });
+
+    it('returns the missing-user contract when the local session directory is deleted', async () => {
+        const { baseUrl, runtimeData } = await startTestAgent({ sessionAutostart: true });
+        rmSync(join(runtimeData, DEFAULT_USER_ID), { recursive: true });
+
+        const response = await fetch(`${baseUrl}/coverage`);
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({
+            messageCode: 401,
+            message: i18n.t('coverage_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+    });
+
+    it('logs and returns 500 when GET /coverage cannot read the user path', async () => {
+        const consoleError = vi.spyOn(LoggerProvider.console, 'error');
+        const { baseUrl, runtimeData } = await startTestAgent({ sessionAutostart: true });
+        rmSync(join(runtimeData, '__default__'), { recursive: true });
+        writeFileSync(join(runtimeData, '__default__'), 'not a directory');
+
+        const response = await fetch(`${baseUrl}/coverage`);
+        const body = await response.json() as { messageCode: number; message: string };
+
+        expect(response.status).toBe(500);
+        expect(body).toMatchObject({ messageCode: 701 });
+        expect(body.message.startsWith(i18n.t('coverage_read_failed'))).toBe(true);
+        expect(consoleError).not.toHaveBeenCalledWith(body.message);
+    });
+
+    it('returns 500 from GET /coverage when the default-user directory is a symbolic link', async () => {
+        const { baseUrl, runtimeData } = await startTestAgent({ sessionAutostart: true });
+        const outsideRuntimeData = mkdtempSync(join(tmpdir(), 'jscov-agent-coverage-outside-'));
+        temporaryRoots.push(outsideRuntimeData);
+        rmSync(join(runtimeData, '__default__'), { recursive: true });
+        symlinkSync(outsideRuntimeData, join(runtimeData, '__default__'), 'junction');
+
+        const response = await fetch(`${baseUrl}/coverage`);
+        const body = await response.json() as { messageCode: number; message: string };
+
+        expect(response.status).toBe(500);
+        expect(body).toMatchObject({ messageCode: 701 });
+        expect(body.message.startsWith(i18n.t('coverage_read_failed'))).toBe(true);
     });
 
     it('logs the actual bound port when configured port is zero', async () => {
@@ -724,7 +808,7 @@ describe('startAgent', () => {
 
         expect(failed.status).toBe(500);
         const body = await failed.json() as { messageCode: number; message: string };
-        expect(body.messageCode).toBe(500);
+        expect(body.messageCode).toBe(701);
         expect(body.message).toContain(i18n.t('session_stop_failed', { session, userId: DEFAULT_USER_ID }));
         expect(consoleError).not.toHaveBeenCalledWith(body.message);
         expect((await fetch(url, { method: 'POST' })).status).toBe(400);
@@ -739,7 +823,7 @@ describe('startAgent', () => {
         const failed = await fetch(url);
         expect(failed.status).toBe(500);
         const body = await failed.json() as { messageCode: number; message: string };
-        expect(body.messageCode).toBe(500);
+        expect(body.messageCode).toBe(701);
         expect(body.message).toContain(i18n.t('session_start_failed', { userId: DEFAULT_USER_ID }));
         expect(consoleError).not.toHaveBeenCalledWith(body.message);
 

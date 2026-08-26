@@ -58,7 +58,8 @@ describe('SessionService', () => {
     let hadCoverage: boolean;
     let previousCoverage: Record<string, unknown> | undefined;
 
-    beforeEach(() => {
+    beforeEach(async () => {
+        await i18n.changeLanguage('en');
         hadCoverage = Object.hasOwn(coverageGlobal, '__coverage__');
         previousCoverage = coverageGlobal.__coverage__;
         initializeLogger();
@@ -96,6 +97,76 @@ describe('SessionService', () => {
             silentMode: true
         });
     }
+
+    it('lists sorted direct coverage file names without their final extensions', () => {
+        const runtimeData = createRuntimeData();
+        const userDirectory = join(runtimeData, DEFAULT_USER_ID);
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        mkdirSync(join(userDirectory, 'nested'), { recursive: true });
+        writeFileSync(join(userDirectory, 'zeta.json'), '{}');
+        writeFileSync(join(userDirectory, 'beta.json'), '{}');
+        writeFileSync(join(userDirectory, 'alpha.json'), '{}');
+
+        expect(service.getLocalSessionNames()).toEqual(['alpha', 'beta', sessionId, 'zeta']);
+    });
+
+    it('returns an empty list for an empty default-user directory', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        service.startSession();
+        rmSync(join(runtimeData, DEFAULT_USER_ID), { recursive: true });
+        mkdirSync(join(runtimeData, DEFAULT_USER_ID));
+
+        expect(service.getLocalSessionNames()).toEqual([]);
+    });
+
+    it('uses the provided message for a user-not-found error', () => {
+        expect(new UserIdNotFoundError('provided message').message).toBe('provided message');
+    });
+
+    it('reports an unknown user when getting local session names before a session starts', () => {
+        const service = new SessionService(createRuntimeData(), fixedDate);
+
+        let thrown: unknown;
+        try {
+            service.getLocalSessionNames();
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(UserIdNotFoundError);
+        expect((thrown as Error).message).toBe(i18n.t('coverage_user_not_found', { userId: DEFAULT_USER_ID }));
+    });
+
+    it('reports an unknown user when the local session directory is deleted', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        service.startSession();
+        rmSync(join(runtimeData, DEFAULT_USER_ID), { recursive: true });
+
+        let thrown: unknown;
+        try {
+            service.getLocalSessionNames();
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(UserIdNotFoundError);
+        expect((thrown as Error).message).toBe(i18n.t('coverage_user_not_found', { userId: DEFAULT_USER_ID }));
+    });
+
+    it('rejects a default-user directory that is a symbolic link', () => {
+        const runtimeData = createRuntimeData();
+        const outsideRuntimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        service.startSession();
+        rmSync(join(runtimeData, DEFAULT_USER_ID), { recursive: true });
+        symlinkSync(outsideRuntimeData, join(runtimeData, DEFAULT_USER_ID), 'junction');
+
+        expect(() => service.getLocalSessionNames())
+            .toThrow(i18n.t('session_user_id_symbolic_link', { userId: DEFAULT_USER_ID }));
+    });
 
     it('clears supported Istanbul hit counters', () => {
         const runtimeData = createRuntimeData();

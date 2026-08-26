@@ -1,8 +1,7 @@
 import type { Express, Request, Response } from 'express';
 import { currentAgentDescriptor } from '../agent-info.js';
 import type { AgentConfig } from '../configuration/config.js';
-import { toConfigResponse, toInfoResponse, toStatusResponse } from './responses.js';
-import type { ErrorResponse } from './responses.js';
+import { type ErrorResponse, toConfigResponse, toInfoResponse, toStatusResponse } from './responses.js';
 import i18n from '../i18n.js';
 import { LoggerProvider } from '../logging/logger.js';
 import {
@@ -29,7 +28,7 @@ function respondInternalError(response: Response, diagnosticMessage: string, err
     } else {
         LoggerProvider.file.error(detailedMessage);
     }
-    const body: ErrorResponse = { messageCode: 500, message: detailedMessage };
+    const body: ErrorResponse = { messageCode: 701, message: detailedMessage };
     respondError(response, 500, body);
 }
 
@@ -62,6 +61,22 @@ function infoRoute(): RouteRegistrar {
     return (app) => {
         app.get('/info', (_request, response) => {
             response.json(toInfoResponse(currentAgentDescriptor));
+        });
+    };
+}
+
+function coverageRoute(sessions: SessionService): RouteRegistrar {
+    return (app) => {
+        app.get('/coverage', (_request: Request, response: Response) => {
+            try {
+                response.json(sessions.getLocalSessionNames());
+            } catch (error) {
+                if (error instanceof UserIdNotFoundError) {
+                    respondExpectedError(response, 404, 401, error.message);
+                    return;
+                }
+                respondInternalError(response, i18n.t('coverage_read_failed'), error);
+            }
         });
     };
 }
@@ -120,5 +135,5 @@ function sessionStop(sessions: SessionService): RouteRegistrar {
 }
 
 export function createRoutes(config: AgentConfig, sessions: SessionService): readonly RouteRegistrar[] {
-    return [statusRoute(sessions), configRoute(config), infoRoute(), sessionStart(sessions), sessionStop(sessions)];
+    return [statusRoute(sessions), configRoute(config), infoRoute(), coverageRoute(sessions), sessionStart(sessions), sessionStop(sessions)];
 }

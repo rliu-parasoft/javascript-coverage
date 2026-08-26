@@ -1,0 +1,605 @@
+
+pipeline {
+    agent { label 'ai-reviewer' }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '10'))
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
+    parameters {
+        string(
+            name: 'GIT_SSH_CREDENTIALS_ID',
+            defaultValue: 'bitbucket-code-ssh',
+            description: 'Jenkins SSH credentials used for fetching and checking out source branches'
+        )
+        string(
+            name: 'OPENAI_API_KEY_CREDENTIALS_ID',
+            defaultValue: 'code-reviewer-codex',
+            description: 'Jenkins string credential ID containing the OpenAI API key used by Codex CLI'
+        )
+        string(
+            name: 'CODEX_MODEL',
+            defaultValue: 'gpt-5.6-terra',
+            description: 'Codex model ID to use for code review runs'
+        )
+        string(
+            name: 'BITBUCKET_BASE_URL',
+            defaultValue: 'https://code.parasoftcn.com',
+            description: 'Bitbucket base URL for pull request API operations'
+        )
+        string(
+            name: 'BITBUCKET_PROJECT_KEY',
+            defaultValue: 'JSC',
+            description: 'Bitbucket project key'
+        )
+        string(
+            name: 'BITBUCKET_REPO_SLUG',
+            defaultValue: 'javascript-coverage',
+            description: 'Bitbucket repository slug'
+        )
+    }
+
+    stages {
+        stage('Prepare Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage('Checkout source branch') {
+            steps {
+                checkout scm
+                script {
+                    def branch = env.CHANGE_BRANCH ?: env.BRANCH_NAME ?: env.GIT_BRANCH?.replaceFirst(/^origin\//, '')
+                    branch = branch?.replaceFirst(/^refs\/heads\//, '')?.replaceFirst(/^origin\//, '')
+                    if (!branch) {
+                        error('Unable to determine SOURCE_BRANCH from Jenkins multibranch environment.')
+                    }
+                    env.SOURCE_BRANCH = branch
+                    def remoteName = sh(
+                        script: "git remote | head -n 1",
+                        returnStdout: true
+                    ).trim()
+                    if (!remoteName) {
+                        error('Unable to determine git remote name from checkout workspace.')
+                    }
+                    env.GIT_REMOTE = remoteName
+                }
+                sshagent(credentials: ["${params.GIT_SSH_CREDENTIALS_ID}"]) {
+                    sh '''#!/usr/bin/env bash
+set -euo pipefail
+git fetch "${GIT_REMOTE}" master "${SOURCE_BRANCH}"
+git checkout -B "${SOURCE_BRANCH}" "${GIT_REMOTE}/${SOURCE_BRANCH}"
+git reset --hard "${GIT_REMOTE}/${SOURCE_BRANCH}"
+git clean -fd
+'''
+                }
+            }
+        }
+
+        stage('Run code-review with Codex CLI') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'code-reviewer-bitbucket',
+                        variable: 'BITBUCKET_TOKEN'
+                    ),
+                    string(
+                        credentialsId: "${params.OPENAI_API_KEY_CREDENTIALS_ID}",
+                        variable: 'OPENAI_API_KEY'
+                    )
+                ]) {
+                    sshagent(credentials: ["${params.GIT_SSH_CREDENTIALS_ID}"]) {
+                        withEnv([
+                            "BITBUCKET_BASE_URL=${params.BITBUCKET_BASE_URL}",
+                            "BITBUCKET_PROJECT_KEY=${params.BITBUCKET_PROJECT_KEY}",
+                            "BITBUCKET_REPO_SLUG=${params.BITBUCKET_REPO_SLUG}",
+                            "CODEX_MODEL=${params.CODEX_MODEL}"
+                        ]) {
+                            sh '''#!/usr/bin/env bash
+set -euo pipefail
+git config user.name "jscov-automated-a"
+git config user.email "jscov-automated-a@parasoft.com"
+mkdir -p build/reports/oz
+if [ -z "${OPENAI_API_KEY:-}" ]; then
+    echo "ERROR: OPENAI_API_KEY is not set. Check OPENAI_API_KEY_CREDENTIALS_ID."
+    exit 1
+fi
+if ! command -v codex >/dev/null 2>&1; then
+    echo "ERROR: codex CLI is not installed on this Jenkins agent image."
+    exit 1
+fi
+export OPENAI_API_KEY
+export CODEX_API_KEY="${OPENAI_API_KEY}"
+PR_LIST_JSON="$(curl -fsS \
+  -H "Authorization: Bearer ${BITBUCKET_TOKEN}" \
+  "${BITBUCKET_BASE_URL}/rest/api/1.0/projects/${BITBUCKET_PROJECT_KEY}/repos/${BITBUCKET_REPO_SLUG}/pull-requests?state=OPEN&limit=100")"
+PR_ID="$(printf '%s' "${PR_LIST_JSON}" | python3 -c "import json,os,sys; data=json.load(sys.stdin); branch=os.environ['SOURCE_BRANCH']; vals=data.get('values',[]); match=[p for p in vals if (p.get('fromRef') or {}).get('displayId')==branch]; print(match[0]['id'] if match else '')")"
+PR_HEAD_SHA="$(printf '%s' "${PR_LIST_JSON}" | python3 -c "import json,os,sys; data=json.load(sys.stdin); branch=os.environ['SOURCE_BRANCH']; vals=data.get('values',[]); match=[p for p in vals if (p.get('fromRef') or {}).get('displayId')==branch]; print((match[0].get('fromRef') or {}).get('latestCommit','') if match else '')")"
+if [ -z "${PR_ID}" ]; then
+    echo "No open pull request found for source branch '${SOURCE_BRANCH}'; skipping code review."
+    printf '%s\n' "No open pull request found for source branch '${SOURCE_BRANCH}'; skipping code review." > build/reports/oz/code-review-skip-reason.txt
+    exit 0
+fi
+if [ -z "${PR_HEAD_SHA}" ]; then
+    PR_HEAD_SHA="$(git rev-parse HEAD)"
+fi
+echo "${PR_ID}" > build/reports/oz/target-pr-id.txt
+echo "${PR_HEAD_SHA}" > build/reports/oz/target-pr-head-sha.txt
+export PR_ID
+LAST_REVIEW_META_FILE="build/reports/oz/last-review-meta.json"
+python3 - <<'PY' > "${LAST_REVIEW_META_FILE}"
+import json
+import os
+import urllib.request
+
+base_url = os.environ["BITBUCKET_BASE_URL"].rstrip("/")
+project = os.environ["BITBUCKET_PROJECT_KEY"]
+repo = os.environ["BITBUCKET_REPO_SLUG"]
+pr_id = os.environ["PR_ID"]
+token = os.environ["BITBUCKET_TOKEN"]
+marker_prefix = "<!-- jscov-code-review-meta:"
+marker_suffix = "-->"
+
+result = {
+    "status": "not-found",
+    "reviewed_to": "",
+    "comment_id": None,
+    "createdDate": None,
+    "parse_error_count": 0,
+}
+
+latest = None
+parse_errors = 0
+start = 0
+
+while True:
+    url = f"{base_url}/rest/api/latest/projects/{project}/repos/{repo}/pull-requests/{pr_id}/activities?limit=100&start={start}"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(req) as resp:
+            page = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        result["status"] = "comments-fetch-failed"
+        result["error"] = str(exc)
+        break
+
+    for activity in page.get("values", []) or []:
+        comment = activity.get("comment") if isinstance(activity, dict) else None
+        if not isinstance(comment, dict):
+            continue
+        text = comment.get("text") or ""
+        marker_start = text.rfind(marker_prefix)
+        if marker_start < 0:
+            continue
+        marker_start += len(marker_prefix)
+        marker_end = text.find(marker_suffix, marker_start)
+        if marker_end < 0:
+            continue
+        marker_payload = text[marker_start:marker_end].strip()
+        try:
+            meta = json.loads(marker_payload)
+        except Exception:
+            parse_errors += 1
+            continue
+        reviewed_to = str(meta.get("reviewed_to", "")).strip()
+        if len(reviewed_to) < 7 or len(reviewed_to) > 40 or not all(c in "0123456789abcdefABCDEF" for c in reviewed_to):
+            continue
+        created = comment.get("createdDate") or 0
+        if latest is None or created >= latest["createdDate"]:
+            latest = {
+                "createdDate": created,
+                "comment_id": comment.get("id"),
+                "reviewed_to": reviewed_to,
+                "meta": meta,
+            }
+
+    if page.get("isLastPage", True):
+        break
+    next_start = page.get("nextPageStart")
+    if next_start is None:
+        break
+    start = int(next_start)
+
+if latest is not None:
+    result["status"] = "found"
+    result["reviewed_to"] = latest["reviewed_to"]
+    result["comment_id"] = latest["comment_id"]
+    result["createdDate"] = latest["createdDate"]
+    result["meta"] = latest["meta"]
+result["parse_error_count"] = parse_errors
+print(json.dumps(result))
+PY
+
+LAST_REVIEWED_TO="$(python3 -c "import json; d=json.load(open('build/reports/oz/last-review-meta.json', 'r', encoding='utf-8')); print(d.get('reviewed_to',''))")"
+FULL_REVIEW_DIFF_RANGE="${GIT_REMOTE}/master...${GIT_REMOTE}/${SOURCE_BRANCH}"
+REVIEW_DIFF_RANGE="${FULL_REVIEW_DIFF_RANGE}"
+REVIEW_SCOPE="full-pr-diff"
+
+if [ -n "${LAST_REVIEWED_TO}" ] && [ "${LAST_REVIEWED_TO}" = "${PR_HEAD_SHA}" ]; then
+    echo "No new commits since the last automated review (${LAST_REVIEWED_TO}); skipping code review."
+    printf '%s\n' "No new commits since the last automated review (${LAST_REVIEWED_TO}); skipping code review." > build/reports/oz/code-review-skip-reason.txt
+    exit 0
+fi
+
+if [ -n "${LAST_REVIEWED_TO}" ] && git cat-file -e "${LAST_REVIEWED_TO}^{commit}" >/dev/null 2>&1; then
+    if git merge-base --is-ancestor "${LAST_REVIEWED_TO}" "${PR_HEAD_SHA}"; then
+        REVIEW_DIFF_RANGE="${LAST_REVIEWED_TO}..${PR_HEAD_SHA}"
+        REVIEW_SCOPE="incremental-commits"
+    else
+        echo "Last reviewed commit ${LAST_REVIEWED_TO} is not an ancestor of current PR head ${PR_HEAD_SHA}; falling back to full PR diff."
+    fi
+fi
+
+echo "${REVIEW_SCOPE}" > build/reports/oz/review-scope.txt
+echo "${REVIEW_DIFF_RANGE}" > build/reports/oz/review-diff-range.txt
+
+SRC_FILE_LIST="$(git diff --name-only "${REVIEW_DIFF_RANGE}" -- '*.java' '*.js' '*.jsx' '*.ts' '*.tsx' '*.mjs' '*.cjs' | sed '/^$/d' || true)"
+printf '%s\\n' "${SRC_FILE_LIST}" > build/reports/oz/src-files-under-review.txt
+DESIGN_DOC_BRANCH_DIFF_RANGE="${FULL_REVIEW_DIFF_RANGE}"
+DESIGN_DOC_LIST="$(git diff --diff-filter=AMR --name-only "${DESIGN_DOC_BRANCH_DIFF_RANGE}" -- 'specs/*.md' 'docs/design/*.md' | sed '/^$/d' || true)"
+printf '%s\\n' "${DESIGN_DOC_LIST}" > build/reports/oz/design-docs-under-review.txt
+DESIGN_DOC_CONTEXT_FILE="build/reports/oz/review-design-doc-context.md"
+DESIGN_DOC_LIST_FOR_PROMPT_FILE="build/reports/oz/design-docs-under-review.md"
+: > "${DESIGN_DOC_CONTEXT_FILE}"
+: > "${DESIGN_DOC_LIST_FOR_PROMPT_FILE}"
+if [ -n "${DESIGN_DOC_LIST}" ]; then
+    while IFS= read -r DESIGN_DOC_PATH; do
+        [ -z "${DESIGN_DOC_PATH}" ] && continue
+        printf -- '- %s\n' "${DESIGN_DOC_PATH}" >> "${DESIGN_DOC_LIST_FOR_PROMPT_FILE}"
+        if [ -f "${DESIGN_DOC_PATH}" ]; then
+            {
+                echo "### ${DESIGN_DOC_PATH}"
+                echo
+                echo '```markdown'
+                cat "${DESIGN_DOC_PATH}"
+                echo
+                echo '```'
+                echo
+            } >> "${DESIGN_DOC_CONTEXT_FILE}"
+        fi
+    done <<< "${DESIGN_DOC_LIST}"
+else
+    printf -- '- none\n' > "${DESIGN_DOC_LIST_FOR_PROMPT_FILE}"
+fi
+
+if [ -z "${SRC_FILE_LIST}" ]; then
+    if [ "${REVIEW_SCOPE}" = "incremental-commits" ]; then
+        COMMENT_BODY="No Java/JavaScript/TypeScript source file changes were detected since the last automated review at \\`${LAST_REVIEWED_TO:0:12}\\` on branch \\`${SOURCE_BRANCH}\\`."
+    else
+        COMMENT_BODY="No Java/JavaScript/TypeScript source file changes were detected on branch \\`${SOURCE_BRANCH}\\` compared to \\`master\\`."
+    fi
+    INLINE_FINDINGS_JSON="[]"
+    REVIEW_DECISION="clean"
+else
+    SRC_DIFF_FILE="build/reports/oz/src-changes.patch"
+    git --no-pager diff --unified=0 "${REVIEW_DIFF_RANGE}" -- '*.java' '*.js' '*.jsx' '*.ts' '*.tsx' '*.mjs' '*.cjs' > "${SRC_DIFF_FILE}" || true
+    PROMPT_FILE="build/reports/oz/codex-review-prompt.txt"
+    PERSONA_FILE=".agents/agents/code-reviewer/agent.md"
+    SKILL_FILE=".agents/skills/code-review/skill.md"
+    if [ ! -f "${PERSONA_FILE}" ]; then
+        echo "ERROR: required code-review persona file not found: ${PERSONA_FILE}"
+        exit 1
+    fi
+    if [ ! -f "${SKILL_FILE}" ]; then
+        echo "ERROR: required code-review skill file not found: ${SKILL_FILE}"
+        exit 1
+    fi
+    {
+      echo "You MUST adopt the following persona and workflow for this review."
+      echo
+      echo "## Persona (verbatim)"
+      cat "${PERSONA_FILE}"
+      echo
+      echo "## Skill Workflow (verbatim)"
+      cat "${SKILL_FILE}"
+      echo
+      echo "## Design Documents Added/Modified On Source Branch (${DESIGN_DOC_BRANCH_DIFF_RANGE})"
+      cat "${DESIGN_DOC_LIST_FOR_PROMPT_FILE}"
+      echo
+      if [ -s "${DESIGN_DOC_CONTEXT_FILE}" ]; then
+          echo "## Design Document Context (full content)"
+          cat "${DESIGN_DOC_CONTEXT_FILE}"
+          echo
+      fi
+      cat <<EOF
+Review ONLY the following Java/JavaScript/TypeScript source files on branch ${SOURCE_BRANCH} within review scope ${REVIEW_SCOPE} (${REVIEW_DIFF_RANGE}):
+${SRC_FILE_LIST}
+
+Do not review non-source files (for example Jenkinsfile, Gradle build scripts, shell scripts, or build configuration).
+Do not modify files, do not create branches, and do not open pull requests.
+Design-document context is optional add-on context only; if no design docs are listed, proceed with normal code review.
+Produce a rationale-based review summary suitable for posting as a Bitbucket pull-request comment.
+Emit exactly one summary block for the full review scope (all source files combined).
+Keep the summary concise and non-duplicative: do not repeat per-file/per-line findings that are provided in inline comments.
+Do not restate full finding rationale/recommendation text in the summary when those details are present in inline findings.
+In the summary, include only:
+- overall risk and approval recommendation
+- severity counts (HIGH/MEDIUM/LOW)
+- 2-6 short bullets describing cross-cutting themes
+For each finding, provide the exact source file path and destination-side line number only in the JSON block to anchor inline pull-request comments.
+Only include findings that are grounded in the changed lines from the diff below.
+Use the diff below as primary review focus, and read the changed source files from the checked-out workspace for full-file context.
+Do not run additional git operations.
+When a finding has a precise local text replacement at the anchored location, include an optional \\`suggestion\\` field with only the replacement text (no markdown fences). Omit \\`suggestion\\` when a precise local replacement is not appropriate.
+Use \\`suggestion\\` selectively; do not force one for broad refactors or multi-file fixes.
+
+Emit output exactly in this form:
+BEGIN_BITBUCKET_REVIEW_COMMENT
+### Automated Review Summary
+- Risk: <low|medium|high>
+- Recommendation: <approve|approve with follow-ups|request changes>
+- Severity counts: HIGH=<n>, MEDIUM=<n>, LOW=<n>
+- Design docs consulted: <comma-separated relative paths from specs/ or docs/design/, or none>
+- Themes:
+  - <short cross-cutting theme 1>
+  - <short cross-cutting theme 2>
+  - <optional short theme 3..6>
+END_BITBUCKET_REVIEW_COMMENT
+BEGIN_BITBUCKET_INLINE_FINDINGS_JSON
+[
+  {
+    "path": "relative/path/to/File.java",
+    "line": 123,
+    "severity": "HIGH|MEDIUM|LOW",
+    "title": "Short finding title",
+    "rationale": "Why this is a problem",
+    "recommendation": "How to address it",
+    "suggestion": "Optional replacement text only, no markdown fences"
+  }
+]
+END_BITBUCKET_INLINE_FINDINGS_JSON
+REVIEW_DECISION: findings|clean
+Source unified diff (${REVIEW_DIFF_RANGE}, Java/JS/TS files only):
+$(cat "${SRC_DIFF_FILE}")
+EOF
+    } > "${PROMPT_FILE}"
+
+    codex exec \
+        --model "${CODEX_MODEL}" \
+        -c 'model_reasoning_effort="high"' \
+        --sandbox read-only \
+        - < "${PROMPT_FILE}" | tee build/reports/oz/code-review.log
+
+    if ! git diff --quiet --ignore-submodules -- || ! git diff --cached --quiet --ignore-submodules --; then
+        echo "ERROR: code-review run modified repository files; this workflow is review-only."
+        git --no-pager status --short || true
+        exit 1
+    fi
+
+    COMMENT_BODY="$(awk '
+      /^BEGIN_BITBUCKET_REVIEW_COMMENT$/ {in_block=1; buf=""; next}
+      /^END_BITBUCKET_REVIEW_COMMENT$/ {if (in_block) {last=buf}; in_block=0; next}
+      in_block {buf = buf $0 ORS}
+      END {printf "%s", last}
+    ' build/reports/oz/code-review.log)"
+    if [ -z "${COMMENT_BODY}" ]; then
+        echo "ERROR: review comment body markers not found in Codex output."
+        exit 1
+    fi
+    INLINE_FINDINGS_JSON="$(awk '
+      /^BEGIN_BITBUCKET_INLINE_FINDINGS_JSON$/ {in_block=1; buf=""; next}
+      /^END_BITBUCKET_INLINE_FINDINGS_JSON$/ {if (in_block) {last=buf}; in_block=0; next}
+      in_block {buf = buf $0 ORS}
+      END {printf "%s", last}
+    ' build/reports/oz/code-review.log)"
+    if [ -z "${INLINE_FINDINGS_JSON}" ]; then
+        INLINE_FINDINGS_JSON="[]"
+    fi
+    printf '%s\n' "${INLINE_FINDINGS_JSON}" | python3 -c "import json,sys; data=json.load(sys.stdin); assert isinstance(data, list), 'inline findings must be a JSON list'"
+
+    REVIEW_DECISION="$(grep -E '^REVIEW_DECISION:' build/reports/oz/code-review.log | tail -n1 | awk -F': ' '{print $2}' | tr -d '\\r' || true)"
+    if [ -z "${REVIEW_DECISION}" ]; then
+        REVIEW_DECISION="findings"
+    fi
+fi
+REVIEW_META_JSON="$(
+    PR_HEAD_SHA="${PR_HEAD_SHA}" \
+    LAST_REVIEWED_TO="${LAST_REVIEWED_TO}" \
+    REVIEW_SCOPE="${REVIEW_SCOPE}" \
+    REVIEW_DIFF_RANGE="${REVIEW_DIFF_RANGE}" \
+    BUILD_URL="${BUILD_URL:-}" \
+    BUILD_TAG="${BUILD_TAG:-}" \
+    python3 -c "import json,os; print(json.dumps({'reviewed_to': os.environ.get('PR_HEAD_SHA',''), 'reviewed_from': os.environ.get('LAST_REVIEWED_TO',''), 'scope': os.environ.get('REVIEW_SCOPE',''), 'diff_range': os.environ.get('REVIEW_DIFF_RANGE',''), 'build_url': os.environ.get('BUILD_URL',''), 'build_tag': os.environ.get('BUILD_TAG','')}, separators=(',',':')))"
+)"
+COMMENT_BODY="$(
+    printf '%s' "${COMMENT_BODY}" | REVIEW_META_JSON="${REVIEW_META_JSON}" python3 -c "import os,sys; body=sys.stdin.read().rstrip(); marker='<!-- jscov-code-review-meta: ' + os.environ['REVIEW_META_JSON'] + ' -->'; print((body + '\\n\\n' if body else '') + marker)"
+)"
+
+printf '%s\n' "${COMMENT_BODY}" > build/reports/oz/code-review-comment.md
+printf '%s\n' "${INLINE_FINDINGS_JSON}" > build/reports/oz/code-review-inline-findings.json
+echo "${REVIEW_DECISION}" > build/reports/oz/review-decision.txt
+printf '%s' "${COMMENT_BODY}" | python3 -c "import json,sys; print(json.dumps({'text': sys.stdin.read()}))" > build/reports/oz/code-review-comment-payload.json
+curl -fsS -X POST \
+  -H "Authorization: Bearer ${BITBUCKET_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data "@build/reports/oz/code-review-comment-payload.json" \
+  "${BITBUCKET_BASE_URL}/rest/api/1.0/projects/${BITBUCKET_PROJECT_KEY}/repos/${BITBUCKET_REPO_SLUG}/pull-requests/${PR_ID}/comments" \
+  > build/reports/oz/bitbucket-comment-response.json
+
+python3 - <<'PY'
+import json
+import os
+import urllib.error
+import urllib.request
+
+findings_path = "build/reports/oz/code-review-inline-findings.json"
+results_path = "build/reports/oz/bitbucket-inline-comment-results.jsonl"
+summary_path = "build/reports/oz/bitbucket-inline-comment-summary.json"
+error_flag_path = "build/reports/oz/bitbucket-inline-comment-errors.flag"
+
+with open(findings_path, "r", encoding="utf-8") as f:
+    findings = json.load(f)
+
+if not isinstance(findings, list):
+    raise SystemExit("ERROR: inline findings payload must be a JSON list.")
+
+base_url = os.environ["BITBUCKET_BASE_URL"].rstrip("/")
+project = os.environ["BITBUCKET_PROJECT_KEY"]
+repo = os.environ["BITBUCKET_REPO_SLUG"]
+pr_id = os.environ["PR_ID"]
+token = os.environ["BITBUCKET_TOKEN"]
+comments_url = f"{base_url}/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments"
+
+posted = 0
+skipped = 0
+errors = []
+results = []
+
+for idx, finding in enumerate(findings, start=1):
+    if not isinstance(finding, dict):
+        skipped += 1
+        results.append({"index": idx, "status": "skipped", "reason": "finding is not an object"})
+        continue
+
+    path = str(finding.get("path", "")).strip()
+    line_raw = finding.get("line")
+    try:
+        line = int(line_raw)
+    except (TypeError, ValueError):
+        line = 0
+
+    if not path or line <= 0:
+        skipped += 1
+        results.append(
+            {
+                "index": idx,
+                "status": "skipped",
+                "reason": "missing/invalid path or line",
+                "path": path,
+                "line": line_raw,
+            }
+        )
+        continue
+
+    severity = str(finding.get("severity", "UNSPECIFIED")).strip().upper()
+    title = str(finding.get("title", "Code review finding")).strip()
+    rationale = str(finding.get("rationale", "")).strip()
+    recommendation = str(finding.get("recommendation", "")).strip()
+    suggestion = str(finding.get("suggestion", "")).strip()
+
+    if suggestion.startswith("```"):
+        lines = suggestion.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        suggestion = chr(10).join(lines).strip()
+
+    body_parts = [f"**{severity}**: {title}"]
+    if rationale:
+        body_parts.extend(["", rationale])
+    if recommendation:
+        body_parts.extend(["", f"Recommendation: {recommendation}"])
+    if suggestion:
+        body_parts.extend(["", "```suggestion", suggestion, "```"])
+    comment_text = chr(10).join(body_parts)
+
+    payload = {
+        "text": comment_text,
+        "anchor": {
+            "diffType": "EFFECTIVE",
+            "path": path,
+            "line": line,
+            "lineType": "ADDED",
+            "fileType": "TO",
+        },
+    }
+
+    req = urllib.request.Request(
+        comments_url,
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(req) as resp:
+            response_text = resp.read().decode("utf-8", errors="replace")
+        posted += 1
+        results.append(
+            {
+                "index": idx,
+                "status": "posted",
+                "path": path,
+                "line": line,
+                "severity": severity,
+                "response": response_text,
+            }
+        )
+    except urllib.error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        errors.append(
+            {
+                "index": idx,
+                "path": path,
+                "line": line,
+                "status_code": exc.code,
+                "error": error_body,
+            }
+        )
+        results.append(
+            {
+                "index": idx,
+                "status": "error",
+                "path": path,
+                "line": line,
+                "status_code": exc.code,
+                "error": error_body,
+            }
+        )
+    except Exception as exc:
+        errors.append({"index": idx, "path": path, "line": line, "error": str(exc)})
+        results.append({"index": idx, "status": "error", "path": path, "line": line, "error": str(exc)})
+
+with open(results_path, "w", encoding="utf-8") as f:
+    for item in results:
+        f.write(json.dumps(item))
+        f.write(chr(10))
+
+summary = {"total_findings": len(findings), "posted": posted, "skipped": skipped, "errors": len(errors)}
+with open(summary_path, "w", encoding="utf-8") as f:
+    json.dump(summary, f)
+
+if errors:
+    with open(error_flag_path, "w", encoding="utf-8") as f:
+        f.write("errors")
+        f.write(chr(10))
+    print("WARNING: failed to post one or more inline Bitbucket comments; see bitbucket-inline-comment-results.jsonl")
+PY
+
+if [ "${REVIEW_DECISION}" = "findings" ]; then
+    touch build/reports/oz/code-review-findings.flag
+fi
+'''
+                            script {
+                                if (fileExists('build/reports/oz/code-review-findings.flag')) {
+                                    unstable('Code-review findings were posted to Bitbucket.')
+                                }
+                                if (fileExists('build/reports/oz/bitbucket-inline-comment-errors.flag')) {
+                                    unstable('One or more inline Bitbucket comments could not be posted; see archived inline comment results.')
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts(
+                artifacts: 'build/reports/oz/*',
+                fingerprint: true,
+                allowEmptyArchive: true
+            )
+            cleanWs()
+        }
+    }
+}

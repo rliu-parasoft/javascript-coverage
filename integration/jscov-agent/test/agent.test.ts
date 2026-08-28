@@ -170,7 +170,7 @@ describe('agent preload', () => {
         }
     }, 10_000);
 
-    it('overwrites an existing runtime data version manifest', async () => {
+    it('overwrites an existing runtime data version file', async () => {
         const app = spawnPreloadedApp('aut-server.js', [], (_isolatedRoot, runtimeData) => {
             mkdirSync(runtimeData, { recursive: true });
             writeFileSync(join(runtimeData, 'version.json'), '{"toolVersion":"stale"}');
@@ -180,8 +180,8 @@ describe('agent preload', () => {
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
-            const manifestPath = join(app.isolatedRoot, 'runtime-data', 'version.json');
-            expect(JSON.parse(readFileSync(manifestPath, 'utf8'))).toEqual({
+            const versionFile = join(app.isolatedRoot, 'runtime-data', 'version.json');
+            expect(JSON.parse(readFileSync(versionFile, 'utf8'))).toEqual({
                 schemaVersion: '1.0',
                 toolVersion: packageInfo.version
             });
@@ -267,17 +267,17 @@ describe('agent preload', () => {
         }
     }, 10_000);
 
-    it('reports an lstatSync I/O failure on the manifest path without preventing the target from running', async () => {
+    it('reports an lstatSync I/O failure on the version file without preventing the target from running', async () => {
         const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot, runtimeData) => {
             mkdirSync(runtimeData, { recursive: true });
-            const manifestPath = join(runtimeData, 'version.json');
+            const versionFile = join(runtimeData, 'version.json');
             writeFileSync(join(isolatedRoot, 'lstat-failure-agent.js'), `
                 import fs from 'node:fs';
                 import { syncBuiltinESMExports } from 'node:module';
 
                 const originalLstatSync = fs.lstatSync;
                 fs.lstatSync = (path, options) => {
-                    if (path === ${JSON.stringify(manifestPath)}) {
+                    if (path === ${JSON.stringify(versionFile)}) {
                         throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
                     }
                     return originalLstatSync(path, options);
@@ -304,16 +304,16 @@ describe('agent preload', () => {
         }
     }, 10_000);
 
-    it('reports a symbolic-link runtime data manifest without preventing the target from running', async () => {
+    it('reports a symbolic-link runtime data version file without preventing the target from running', async () => {
         const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot, runtimeData) => {
             mkdirSync(runtimeData, { recursive: true });
-            const manifestPath = join(runtimeData, 'version.json');
+            const versionFile = join(runtimeData, 'version.json');
             writeFileSync(join(isolatedRoot, 'symbolic-link-agent.js'), `
                 import fs from 'node:fs';
                 import { syncBuiltinESMExports } from 'node:module';
 
                 const originalLstatSync = fs.lstatSync;
-                fs.lstatSync = (path, options) => path === ${JSON.stringify(manifestPath)}
+                fs.lstatSync = (path, options) => path === ${JSON.stringify(versionFile)}
                     ? { isSymbolicLink: () => true }
                     : originalLstatSync(path, options);
                 syncBuiltinESMExports();
@@ -325,32 +325,32 @@ describe('agent preload', () => {
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
-            const manifestError = i18n.t('agent_version_manifest_symbolic_link', {
+            const versionFileError = i18n.t('agent_version_file_symbolic_link', {
                 path: join(app.isolatedRoot, 'runtime-data', 'version.json')
             });
             const runtimeData = join(app.isolatedRoot, 'runtime-data');
             const [logFile] = readdirSync(runtimeData)
                 .filter((file) => /^agent-\d{6}-\d{10}\.log$/.test(file));
-            const logContents = await waitForLogContent(join(runtimeData, logFile), manifestError);
-            expect(logContents).toContain(`Error: ${manifestError}`);
-            expect(output.stdout()).toContain(manifestError);
-            expect(output.stderr()).not.toContain(manifestError);
+            const logContents = await waitForLogContent(join(runtimeData, logFile), versionFileError);
+            expect(logContents).toContain(`Error: ${versionFileError}`);
+            expect(output.stdout()).toContain(versionFileError);
+            expect(output.stderr()).not.toContain(versionFileError);
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);
         }
     }, 10_000);
 
-    it('reports an unwritable runtime data manifest without preventing the target from running', async () => {
+    it('reports an unwritable runtime data version file without preventing the target from running', async () => {
         const app = spawnPreloadedApp('aut-server.js', [], (isolatedRoot, runtimeData) => {
-            const manifestPath = join(runtimeData, 'version.json');
-            writeFileSync(join(isolatedRoot, 'manifest-write-failure-agent.js'), `
+            const versionFile = join(runtimeData, 'version.json');
+            writeFileSync(join(isolatedRoot, 'version-file-write-failure-agent.js'), `
                 import fs from 'node:fs';
                 import { syncBuiltinESMExports } from 'node:module';
 
                 const originalWriteFileSync = fs.writeFileSync;
                 fs.writeFileSync = (path, ...args) => {
-                    if (path === ${JSON.stringify(manifestPath)}) {
+                    if (path === ${JSON.stringify(versionFile)}) {
                         throw new Error('EACCES');
                     }
                     return originalWriteFileSync(path, ...args);
@@ -359,21 +359,21 @@ describe('agent preload', () => {
                 await import('./agent.js');
             `);
             return ['--jscov.agent.runtimeData', runtimeData];
-        }, 'manifest-write-failure-agent.js');
+        }, 'version-file-write-failure-agent.js');
         const output = collectOutput(app.child);
 
         try {
             await waitForOutput(output.stdout, output.stderr, 'AUT_SERVER_ENTERED');
-            const manifestError = i18n.t('agent_version_manifest_cannot_be_written', {
+            const versionFileError = i18n.t('agent_version_file_cannot_be_written', {
                 path: join(app.isolatedRoot, 'runtime-data', 'version.json')
             });
             const runtimeData = join(app.isolatedRoot, 'runtime-data');
             const [logFile] = readdirSync(runtimeData)
                 .filter((file) => /^agent-\d{6}-\d{10}\.log$/.test(file));
-            const logContents = await waitForLogContent(join(runtimeData, logFile), manifestError);
-            expect(logContents).toContain(`Error: ${manifestError}`);
-            expect(output.stdout()).toContain(manifestError);
-            expect(output.stderr()).not.toContain(manifestError);
+            const logContents = await waitForLogContent(join(runtimeData, logFile), versionFileError);
+            expect(logContents).toContain(`Error: ${versionFileError}`);
+            expect(output.stdout()).toContain(versionFileError);
+            expect(output.stderr()).not.toContain(versionFileError);
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);

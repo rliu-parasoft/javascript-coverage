@@ -2,6 +2,7 @@ import { existsSync, linkSync, mkdtempSync, mkdirSync, readFileSync, readdirSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import yauzl from 'yauzl';
 import i18n from '../../src/i18n.js';
 import { LoggerProvider } from '../../src/logging/logger.js';
 import type { DeleteCoverageResponse } from '../../src/server/responses.js';
@@ -10,8 +11,10 @@ import {
     CannotStopSessionNotStartedError,
     DEFAULT_USER_ID,
     SessionAlreadyStartedError,
+    SessionIdNotFoundError,
     SessionService,
-    UserIdNotFoundError
+    UserIdNotFoundError,
+    VersionFileNotFoundError
 } from '../../src/session/session-service.js';
 
 const unlinkFailure = vi.hoisted(() => ({ enabled: false }));
@@ -78,6 +81,53 @@ vi.mock('../../src/coverage/runtime-coverage.js', async (importOriginal) => {
 
 const fixedDate = () => new Date(2026, 7, 7, 16, 3);
 const coverageGlobal = globalThis as typeof globalThis & { __coverage__?: Record<string, unknown> };
+
+interface ZipEntry {
+    readonly name: string;
+    readonly contents: string;
+}
+
+async function collectArchive(archive: ReturnType<SessionService['createSessionArchive']>): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+        archive.output.on('error', reject);
+        archive.output.on('data', (chunk: Buffer) => chunks.push(chunk));
+        archive.output.on('end', resolve);
+    });
+    return Buffer.concat(chunks);
+}
+
+function readZip(buffer: Buffer): Promise<readonly ZipEntry[]> {
+    return new Promise((resolve, reject) => {
+        yauzl.fromBuffer(buffer, { lazyEntries: true }, (openError, zipFile) => {
+            if (openError || !zipFile) {
+                reject(openError ?? new Error('Expected ZIP file.'));
+                return;
+            }
+
+            const entries: ZipEntry[] = [];
+            zipFile.on('error', reject);
+            zipFile.on('end', () => resolve(entries));
+            zipFile.on('entry', (entry) => {
+                zipFile.openReadStream(entry, (streamError, stream) => {
+                    if (streamError || !stream) {
+                        reject(streamError ?? new Error(`Expected stream for ${entry.fileName}.`));
+                        return;
+                    }
+
+                    const chunks: Buffer[] = [];
+                    stream.on('error', reject);
+                    stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+                    stream.on('end', () => {
+                        entries.push({ name: entry.fileName, contents: Buffer.concat(chunks).toString('utf8') });
+                        zipFile.readEntry();
+                    });
+                });
+            });
+            zipFile.readEntry();
+        });
+    });
+}
 
 describe('SessionService', () => {
     const temporaryRoots: string[] = [];
@@ -155,6 +205,11 @@ describe('SessionService', () => {
         expect(new UserIdNotFoundError('provided message').message).toBe('provided message');
     });
 
+    it('exports archive route-contract errors from the session service', () => {
+        expect(SessionIdNotFoundError).toBeDefined();
+        expect(VersionFileNotFoundError).toBeDefined();
+    });
+
     it('reports an unknown user when getting local session names before a session starts', () => {
         const service = new SessionService(createRuntimeData(), fixedDate);
 
@@ -196,6 +251,144 @@ describe('SessionService', () => {
 
         expect(() => service.getLocalSessionNames())
             .toThrow(i18n.t('session_user_id_symbolic_link', { userId: DEFAULT_USER_ID }));
+    });
+
+    it('rejects creating a session archive when the default-user directory is a symbolic link', () => {
+        const runtimeData = createRuntimeData();
+        const outsideRuntimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        rmSync(join(runtimeData, DEFAULT_USER_ID), { recursive: true });
+        symlinkSync(outsideRuntimeData, join(runtimeData, DEFAULT_USER_ID), 'junction');
+
+        expect(() => service.createSessionArchive(sessionId))
+            .toThrow(i18n.t('session_user_id_symbolic_link', { userId: DEFAULT_USER_ID }));
+    });
+
+    it('packages only the requested session and version file in the runtime-data layout', async () => {
+        const root = createRuntimeData();
+        const runtimeData = join(root, 'jscov-coverage-runtime');
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        writeFileSync(join(runtimeData, 'version.json'), '{"schemaVersion":"1.0"}\n');
+        writeFileSync(join(runtimeData, 'agent-000001.log'), 'agent diagnostic');
+        writeFileSync(join(runtimeData, DEFAULT_USER_ID, 'runtime_coverage_20260826_1201_0.json'), '{"/other.js":{}}');
+
+        const archive = service.createSessionArchive(sessionId);
+        expect(archive.filename).toBe(`${sessionId}.zip`);
+
+        const entries = await readZip(await collectArchive(archive));
+
+        expect(entries).toEqual([
+            { name: 'jscov-coverage-runtime/version.json', contents: '{"schemaVersion":"1.0"}\n' },
+            { name: `jscov-coverage-runtime/__default__/${sessionId}.json`, contents: '{}' }
+        ]);
+        expect(entries.map((entry) => entry.name)).not.toContain('jscov-coverage-runtime/agent-000001.log');
+        expect(entries.map((entry) => entry.name)).not.toContain('jscov-coverage-runtime/__default__/runtime_coverage_20260826_1201_0.json');
+    });
+
+    it('reports missing and traversal-shaped session IDs without reading outside the user directory', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        service.startSession();
+        writeFileSync(join(runtimeData, 'version.json'), '{}');
+        const missingSessionId = 'runtime_coverage_20260826_1201_0';
+
+        expect(() => service.createSessionArchive(missingSessionId)).toThrowError(
+            i18n.t('coverage_session_not_found', { sessionId: missingSessionId })
+        );
+        expect(() => service.createSessionArchive(missingSessionId)).toThrow(SessionIdNotFoundError);
+        expect(() => service.createSessionArchive('../outside-session')).toThrow(SessionIdNotFoundError);
+    });
+
+    it('rejects a requested session file that is a symbolic link', () => {
+        const runtimeData = createRuntimeData();
+        const linkedDirectory = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        writeFileSync(join(runtimeData, 'version.json'), '{}');
+        rmSync(join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`));
+        symlinkSync(linkedDirectory, join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`), 'junction');
+
+        expect(() => service.createSessionArchive(sessionId)).toThrowError(
+            i18n.t('session_file_symbolic_link', { session: sessionId, userId: DEFAULT_USER_ID })
+        );
+    });
+
+    it('reports an archive read error when a session file disappears after validation', async () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        const sessionFile = join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`);
+        writeFileSync(join(runtimeData, 'version.json'), '{}');
+        const archive = service.createSessionArchive(sessionId);
+        const error = new Promise<unknown>((resolve) => archive.errorSource.once('error', resolve));
+
+        rmSync(sessionFile);
+
+        await expect(error).resolves.toMatchObject({ code: 'ENOENT' });
+    });
+
+    it('reports a missing version file with its resolved absolute path', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+
+        expect(() => service.createSessionArchive(sessionId)).toThrowError(
+            i18n.t('version_file_not_found', { path: join(runtimeData, 'version.json') })
+        );
+        expect(() => service.createSessionArchive(sessionId)).toThrow(VersionFileNotFoundError);
+    });
+
+    it('treats a version-file directory as missing', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        mkdirSync(join(runtimeData, 'version.json'));
+
+        expect(() => service.createSessionArchive(sessionId)).toThrowError(
+            i18n.t('version_file_not_found', { path: join(runtimeData, 'version.json') })
+        );
+        expect(() => service.createSessionArchive(sessionId)).toThrow(VersionFileNotFoundError);
+    });
+
+    it('treats a requested session directory as missing', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        service.stopSession();
+        const sessionFile = join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`);
+        rmSync(sessionFile);
+        mkdirSync(sessionFile);
+        writeFileSync(join(runtimeData, 'version.json'), '{}');
+
+        expect(() => service.createSessionArchive(sessionId)).toThrowError(
+            i18n.t('coverage_session_not_found', { sessionId })
+        );
+        expect(() => service.createSessionArchive(sessionId)).toThrow(SessionIdNotFoundError);
+    });
+    it('rejects a version file that is a symbolic link', () => {
+        const runtimeData = createRuntimeData();
+        const linkedDirectory = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        symlinkSync(linkedDirectory, join(runtimeData, 'version.json'), 'junction');
+
+        expect(() => service.createSessionArchive(sessionId)).toThrowError(
+            i18n.t('agent_version_file_symbolic_link', { path: join(runtimeData, 'version.json') })
+        );
+    });
+
+    it('reports a registered user whose directory was deleted while creating an archive', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        rmSync(join(runtimeData, DEFAULT_USER_ID), { recursive: true });
+
+        expect(() => service.createSessionArchive(sessionId)).toThrowError(
+            i18n.t('coverage_user_not_found', { userId: DEFAULT_USER_ID })
+        );
+        expect(() => service.createSessionArchive(sessionId)).toThrow(UserIdNotFoundError);
     });
 
     it('clears supported Istanbul hit counters', () => {

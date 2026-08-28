@@ -1,6 +1,8 @@
 import { closeSync, lstatSync, mkdirSync, openSync, readdirSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
+import { basename, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
+import type { PassThrough } from 'node:stream';
+import { ZipFile } from 'yazl';
 import { clearCoverageHits, getCoverage } from '../coverage/runtime-coverage.js';
 import i18n from '../i18n.js';
 import { LoggerProvider } from '../logging/logger.js';
@@ -9,6 +11,13 @@ import type { DeleteCoverageResponse, SkippedCoverage } from '../server/response
 
 export const DEFAULT_USER_ID = '__default__';
 const SESSION_ID_PREFIX = 'runtime_coverage_';
+const SESSION_ID = /^runtime_coverage_\d{8}_\d{4}_\d+$/;
+
+export interface SessionArchive {
+    readonly filename: string;
+    readonly errorSource: ZipFile;
+    readonly output: PassThrough;
+}
 
 export class SessionAlreadyStartedError extends Error {
     readonly sessionId: string;
@@ -22,6 +31,18 @@ export class SessionAlreadyStartedError extends Error {
 export class UserIdNotFoundError extends Error {
     constructor(message: string) {
         super(message);
+    }
+}
+
+export class SessionIdNotFoundError extends Error {
+    constructor(sessionId: string) {
+        super(i18n.t('coverage_session_not_found', { sessionId }));
+    }
+}
+
+export class VersionFileNotFoundError extends Error {
+    constructor(versionFile: string) {
+        super(i18n.t('version_file_not_found', { path: versionFile }));
     }
 }
 
@@ -53,6 +74,54 @@ export class SessionService {
 
     getActiveSession(userId = DEFAULT_USER_ID): string | undefined {
         return this.activeSessionForUsers.get(userId);
+    }
+
+    createSessionArchive(sessionId: string, userId = DEFAULT_USER_ID): SessionArchive {
+        if (!this.knownUsers.has(userId)) {
+            throw new UserIdNotFoundError(i18n.t('coverage_user_not_found', { userId }));
+        }
+        const userDirectory = this.getUserDirectory(userId);
+        const userDirectoryStat = lstatSync(userDirectory, { throwIfNoEntry: false });
+        if (!userDirectoryStat) {
+            throw new UserIdNotFoundError(i18n.t('coverage_user_not_found', { userId }));
+        }
+        if (userDirectoryStat.isSymbolicLink()) {
+            throw new Error(i18n.t('session_user_id_symbolic_link', { userId }));
+        }
+        if (!SESSION_ID.test(sessionId)) {
+            throw new SessionIdNotFoundError(sessionId);
+        }
+
+        const sessionFile = join(userDirectory, `${sessionId}.json`);
+        const sessionFileStat = lstatSync(sessionFile, { throwIfNoEntry: false });
+        if (sessionFileStat?.isSymbolicLink()) {
+            throw new Error(i18n.t('session_file_symbolic_link', { session: sessionId, userId }));
+        }
+        if (!sessionFileStat?.isFile()) {
+            throw new SessionIdNotFoundError(sessionId);
+        }
+
+        const resolvedRuntimeData = resolve(this.runtimeData);
+        const versionFile = join(resolvedRuntimeData, 'version.json');
+        const versionFileStat = lstatSync(versionFile, { throwIfNoEntry: false });
+        if (versionFileStat?.isSymbolicLink()) {
+            throw new Error(i18n.t('agent_version_file_symbolic_link', { path: versionFile }));
+        }
+        if (!versionFileStat?.isFile()) {
+            throw new VersionFileNotFoundError(versionFile);
+        }
+
+        const archive = new ZipFile();
+        const runtimeDataName = basename(resolvedRuntimeData);
+        archive.addFile(versionFile, `${runtimeDataName}/version.json`);
+        archive.addFile(sessionFile, `${runtimeDataName}/${userId}/${sessionId}.json`);
+        archive.end();
+
+        return {
+            filename: `${sessionId}.zip`,
+            errorSource: archive,
+            output: archive.outputStream as PassThrough
+        };
     }
 
     getLocalSessionNames(userId = DEFAULT_USER_ID): string[] {

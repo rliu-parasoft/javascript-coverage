@@ -92,16 +92,67 @@ lexicographically sorted JSON array of file names without their final
 extensions; an empty default-user directory returns `[]`. Subdirectories are
 not returned.
 
-If the default-user directory does not exist, the endpoint returns `404`:
+If the default user is not registered in the running agent, or its runtime
+directory does not exist, the endpoint returns `404`:
 
 ```json
 {
   "messageCode": 401,
-  "message": "Cannot get coverage because user is not found"
+  "message": "Cannot get coverage because user '__default__' was not found"
 }
 ```
 
 The agent listens on port `8050`. 
+
+## Session archive download
+
+Download a completed session's runtime coverage with:
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8050/coverage/runtime_coverage_20260807_1603_0 -OutFile runtime_coverage_20260807_1603_0.zip
+```
+
+The response is an `application/zip` attachment named `<sessionId>.zip`. Its
+contents contain only `version.json` and the requested default-user session
+JSON:
+
+```
+<runtimeData-directory-name>/
+├── version.json
+└── __default__/
+    └── <sessionId>.json
+```
+
+Agent logs, other sessions, and instrumentation files are not included. The
+session JSON is archived as-is, including an empty `{}` session file.
+
+If the default user is not registered in the running agent, or its runtime
+directory is absent, the server returns `404` before validating the session ID:
+
+```json
+{
+  "messageCode": 401,
+  "message": "Cannot get coverage because user '__default__' was not found"
+}
+```
+
+If the requested session does not exist, the server returns `404`:
+
+```json
+{
+  "messageCode": 400,
+  "message": "Cannot get coverage because session 'runtime_coverage_20260807_1603_0' was not found"
+}
+```
+
+If `version.json` is missing, the server returns `405`:
+
+```json
+{
+  "messageCode": 701,
+  "message": "Version file was not found: <absolute runtimeData path>\\version.json"
+}
+```
 
 ## Session stop
 

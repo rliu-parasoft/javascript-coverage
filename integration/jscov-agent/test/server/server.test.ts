@@ -435,6 +435,97 @@ describe('startAgent', () => {
         });
     });
 
+    it('downloads a session archive containing only the requested runtime session and version file', async () => {
+        const root = mkdtempSync(join(tmpdir(), 'jscov-session-archive-download-'));
+        temporaryRoots.push(root);
+        const runtimeData = join(root, 'runtime-coverage');
+        mkdirSync(runtimeData);
+        const { baseUrl } = await startTestAgent({ runtimeData, sessionAutostart: true });
+        const session = 'runtime_coverage_20260826_1200_0';
+        const otherSession = 'runtime_coverage_20260826_1201_0';
+        const userDirectory = join(runtimeData, DEFAULT_USER_ID);
+        writeFileSync(join(runtimeData, 'version.json'), '{"schemaVersion":"1.0"}\n');
+        writeFileSync(join(runtimeData, 'agent-000001.log'), 'agent diagnostic');
+        writeFileSync(join(runtimeData, 'instrumentation_0a4f.json'), '{"instrumented":true}');
+        writeFileSync(join(userDirectory, `${session}.json`), '{}');
+        writeFileSync(join(userDirectory, `${otherSession}.json`), '{"/other.js":{}}');
+
+        const response = await fetch(`${baseUrl}/coverage/${session}`);
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-type')).toMatch(/^application\/zip/);
+        expect(response.headers.get('content-disposition')).toContain(`attachment; filename="${session}.zip"`);
+        expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(0);
+    });
+
+    it('returns the user-not-found coverage contract before validating the requested session ID', async () => {
+        const { baseUrl } = await startTestAgent();
+
+        const response = await fetch(`${baseUrl}/coverage/${encodeURIComponent('../outside-session')}`);
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({
+            messageCode: 401,
+            message: i18n.t('coverage_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+    });
+
+    it('returns the user-not-found coverage contract for an unregistered default user even when session files exist', async () => {
+        const { runtimeData, baseUrl } = await startTestAgent();
+        const session = 'runtime_coverage_20260826_1200_0';
+        const userDirectory = join(runtimeData, DEFAULT_USER_ID);
+        mkdirSync(userDirectory);
+        writeFileSync(join(runtimeData, 'version.json'), '{}');
+        writeFileSync(join(userDirectory, `${session}.json`), '{}');
+
+        const listedCoverage = await fetch(`${baseUrl}/coverage`);
+        const downloadedCoverage = await fetch(`${baseUrl}/coverage/${session}`);
+
+        expect(listedCoverage.status).toBe(404);
+        await expect(listedCoverage.json()).resolves.toEqual({
+            messageCode: 401,
+            message: i18n.t('coverage_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+        expect(downloadedCoverage.status).toBe(404);
+        await expect(downloadedCoverage.json()).resolves.toEqual({
+            messageCode: 401,
+            message: i18n.t('coverage_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+    });
+
+    it('returns the version-file-missing coverage contract', async () => {
+        const { runtimeData, baseUrl } = await startTestAgent({ sessionAutostart: true });
+        const session = 'runtime_coverage_20260826_1200_0';
+        const userDirectory = join(runtimeData, DEFAULT_USER_ID);
+        writeFileSync(join(userDirectory, `${session}.json`), '{}');
+
+        const response = await fetch(`${baseUrl}/coverage/${session}`);
+
+        expect(response.status).toBe(405);
+        await expect(response.json()).resolves.toEqual({
+            messageCode: 701,
+            message: i18n.t('version_file_not_found', { path: join(runtimeData, 'version.json') })
+        });
+    });
+
+    it('returns the session-not-found coverage contract for missing and unsafe session IDs', async () => {
+        const { baseUrl } = await startTestAgent({ sessionAutostart: true });
+
+        const missing = await fetch(`${baseUrl}/coverage/runtime_coverage_20260826_1200_0`);
+        const unsafe = await fetch(`${baseUrl}/coverage/${encodeURIComponent('../outside-session')}`);
+
+        expect(missing.status).toBe(404);
+        await expect(missing.json()).resolves.toEqual({
+            messageCode: 400,
+            message: i18n.t('coverage_session_not_found', { sessionId: 'runtime_coverage_20260826_1200_0' })
+        });
+        expect(unsafe.status).toBe(404);
+        await expect(unsafe.json()).resolves.toEqual({
+            messageCode: 400,
+            message: i18n.t('coverage_session_not_found', { sessionId: '../outside-session' })
+        });
+    });
+
     it('does not bind a REST port when disabled', async () => {
         const runtimeData = mkdtempSync(join(tmpdir(), 'jscov-agent-rest-disabled-'));
         temporaryRoots.push(runtimeData);

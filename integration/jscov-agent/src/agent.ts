@@ -1,6 +1,6 @@
 import { parseCommandLine, readSettingsFile, resolveConfiguration, type AgentConfig } from './configuration/config.js';
 import { LoggerProvider } from './logging/logger.js';
-import { writeAgentVersionManifest } from './agent-info.js';
+import { writeAgentVersionFile } from './agent-info.js';
 import i18n from './i18n.js';
 import { RestServiceStartupError, SessionAutostartError, startAgent, type StartedAgent } from './server/server.js';
 import { DEFAULT_USER_ID } from './session/session-service.js';
@@ -33,7 +33,7 @@ function resolveAgentConfiguration(): AgentConfig | undefined {
         if (resolution.config) {
             LoggerProvider.initialize(resolution.config);
             loggerInitialized = true;
-            writeAgentVersionManifest(resolution.config.runtimeData);
+            writeAgentVersionFile(resolution.config.runtimeData);
             LoggerProvider.writeBanner();
             resolution.diagnostics.forEach((message) => LoggerProvider.file.debug(message));
             LoggerProvider.file.debug(

@@ -9,8 +9,10 @@ import {
     CannotStopSessionNotStartedError,
     DEFAULT_USER_ID,
     SessionAlreadyStartedError,
+    SessionIdNotFoundError,
     SessionService,
-    UserIdNotFoundError
+    UserIdNotFoundError,
+    VersionFileNotFoundError
 } from '../session/session-service.js';
 import { errorMessage } from '../utils.js';
 
@@ -30,6 +32,17 @@ function respondInternalError(response: Response, diagnosticMessage: string, err
     }
     const body: ErrorResponse = { messageCode: 701, message: detailedMessage };
     respondError(response, 500, body);
+}
+
+function logAndDestroyResponse(response: Response, diagnosticMessage: string, error: unknown): void {
+    if (error instanceof Error) {
+        LoggerProvider.file.error(diagnosticMessage, error);
+        response.destroy(error);
+    } else {
+        const detailedMessage = `${diagnosticMessage} ${errorMessage(error)}`;
+        LoggerProvider.file.error(detailedMessage);
+        response.destroy(new Error(detailedMessage));
+    }
 }
 
 function respondExpectedError(response: Response, status: number, messageCode: number, message: string, diagnosticMessage = message): void {
@@ -73,6 +86,59 @@ function coverageRoute(sessions: SessionService): RouteRegistrar {
             } catch (error) {
                 if (error instanceof UserIdNotFoundError) {
                     respondExpectedError(response, 404, 401, error.message);
+                    return;
+                }
+                respondInternalError(response, i18n.t('coverage_read_failed'), error);
+            }
+        });
+    };
+}
+
+function sessionArchiveDownloadRoute(sessions: SessionService): RouteRegistrar {
+    return (app) => {
+        app.get('/coverage/:sessionId', (request, response) => {
+            try {
+                const archive = sessions.createSessionArchive(request.params.sessionId);
+                const coverageReadFailed = i18n.t('coverage_read_failed');
+                let archiveDestroyed = false;
+                const destroyArchive = () => {
+                    if (archiveDestroyed) return;
+                    archiveDestroyed = true;
+                    archive.output.unpipe(response);
+                    archive.output.destroy();
+                };
+                archive.errorSource.on('error', (error) => {
+                    if (response.writableEnded) {
+                        return;
+                    }
+                    destroyArchive();
+                    if (!response.headersSent) {
+                        response.removeHeader('Content-Type');
+                        response.removeHeader('Content-Disposition');
+                        respondInternalError(response, coverageReadFailed, error);
+                        return;
+                    }
+                    logAndDestroyResponse(response, coverageReadFailed, error);
+                });
+                response.once('close', () => {
+                    if (!response.writableEnded) {
+                        destroyArchive();
+                    }
+                });
+                response.type('application/zip').attachment(archive.filename);
+                archive.output.pipe(response);
+            } catch (error) {
+                if (error instanceof UserIdNotFoundError) {
+                    respondExpectedError(response, 404, 401, error.message);
+                    return;
+                }
+                if (error instanceof SessionIdNotFoundError) {
+                    respondExpectedError(response, 404, 400, error.message);
+                    return;
+                }
+                if (error instanceof VersionFileNotFoundError) {
+                    // 405/701 is the established session-archive-download contract for a missing version file.
+                    respondExpectedError(response, 405, 701, error.message);
                     return;
                 }
                 respondInternalError(response, i18n.t('coverage_read_failed'), error);
@@ -153,5 +219,14 @@ function coverageDelete(sessions: SessionService): RouteRegistrar {
 }
 
 export function createRoutes(config: AgentConfig, sessions: SessionService): readonly RouteRegistrar[] {
-    return [statusRoute(sessions), configRoute(config), infoRoute(), coverageRoute(sessions), sessionStart(sessions), sessionStop(sessions), coverageDelete(sessions)];
+    return [
+        statusRoute(sessions),
+        configRoute(config),
+        infoRoute(),
+        coverageRoute(sessions),
+        sessionArchiveDownloadRoute(sessions),
+        coverageDelete(sessions),
+        sessionStart(sessions),
+        sessionStop(sessions)
+    ];
 }

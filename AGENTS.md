@@ -11,12 +11,16 @@
 
 ## Tests
 
-- Tests must not assume a single language; generate localized message expectations through i18n resources.
+- Use i18n resources for all user-visible message expectations; add per-locale route tests only for locale-dependent behavior.
 
 ## Localization
 
 - When changing a user-facing i18n message, update every supported locale with equivalent meaning and consistent terminology.
 - When generating or editing any user-visible message (e.g., i18n `.properties` or `.json` values, log messages), phrase it the way a native speaker would; grammatically correct but awkward phrasing is not acceptable. Apply this to English and Chinese, the currently supported languages.
+
+## API Contracts
+
+- When an API uses an HTTP status outside its usual semantics, record the required contract rationale in its specification.
 
 ## Repository Knowledge
 

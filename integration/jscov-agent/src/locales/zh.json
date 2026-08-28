@@ -7,6 +7,8 @@
     "agent_rest_invalid_port": "配置的代理服务器端口 {{port}} 无效。使用 0 到 65535 之间的值。",
     "agent_rest_port_unavailable": "端口 {{port}} 不可用。",
     "coverage_user_not_found": "无法获取覆盖率，因为未找到用户 '{{userId}}'",
+    "coverage_session_not_found": "无法获取覆盖率，因为未找到会话 '{{sessionId}}'",
+    "version_file_not_found": "未找到 Agent 版本文件：{{path}}",
     "coverage_read_failed": "获取覆盖率失败：",
     "session_started_diagnostic": "已为用户 '{{userId}}' 启动会话 '{{session}}'",
     "session_already_started": "用户 '{{userId}}' 的会话 '{{session}}' 已启动",
@@ -40,6 +42,6 @@
     "runtime_data_missing": "未设置代理运行时数据目录 - 缺少 'jscov.agent.runtimeData' 参数！",
     "runtime_data_not_directory": "代理运行时数据配置不是目录：{{path}}",
     "runtime_data_cannot_be_created": "无法创建代理运行时数据目录：{{path}}。",
-    "agent_version_manifest_cannot_be_written": "无法创建 Agent 版本文件：{{path}}",
-    "agent_version_manifest_symbolic_link": "Agent 版本文件不得为符号链接：{{path}}"
+    "agent_version_file_cannot_be_written": "无法创建 Agent 版本文件：{{path}}",
+    "agent_version_file_symbolic_link": "Agent 版本文件不得为符号链接：{{path}}"
 }

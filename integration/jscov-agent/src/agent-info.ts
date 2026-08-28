@@ -15,33 +15,33 @@ export const currentAgentDescriptor: AgentDescriptor = {
     toolId: 'parasoft-jscov'
 };
 
-const MANIFEST_FILENAME = 'version.json';
-const MANIFEST_SCHEMA_VERSION = '1.0' as const;
+const VERSION_FILE_NAME = 'version.json';
+const VERSION_FILE_SCHEMA_VERSION = '1.0' as const;
 
 interface AgentVersion {
-    readonly schemaVersion: typeof MANIFEST_SCHEMA_VERSION;
+    readonly schemaVersion: typeof VERSION_FILE_SCHEMA_VERSION;
     readonly toolVersion: string;
 }
 
-export function writeAgentVersionManifest(runtimeData: string): void {
-    const manifestPath = join(runtimeData, MANIFEST_FILENAME);
+export function writeAgentVersionFile(runtimeData: string): void {
+    const versionFile = join(runtimeData, VERSION_FILE_NAME);
 
-    if (lstatSync(manifestPath, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    if (lstatSync(versionFile, { throwIfNoEntry: false })?.isSymbolicLink()) {
         throw new Error(
-            i18n.t('agent_version_manifest_symbolic_link', { path: manifestPath })
+            i18n.t('agent_version_file_symbolic_link', { path: versionFile })
         );
     }
 
-    const manifest: AgentVersion = {
-        schemaVersion: MANIFEST_SCHEMA_VERSION,
+    const agentVersion: AgentVersion = {
+        schemaVersion: VERSION_FILE_SCHEMA_VERSION,
         toolVersion: packageInfo.version
     };
 
     try {
-        writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
+        writeFileSync(versionFile, `${JSON.stringify(agentVersion)}\n`);
     } catch (error) {
         throw new Error(
-            i18n.t('agent_version_manifest_cannot_be_written', { path: manifestPath }),
+            i18n.t('agent_version_file_cannot_be_written', { path: versionFile }),
             { cause: error }
         );
     }

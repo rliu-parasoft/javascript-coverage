@@ -7,6 +7,8 @@
     "agent_rest_invalid_port": "Configured agent server port {{port}} is invalid. Use a value from 0 to 65535.",
     "agent_rest_port_unavailable": "port {{port}} is unavailable.",
     "coverage_user_not_found": "Cannot get coverage because user '{{userId}}' was not found",
+    "coverage_session_not_found": "Cannot get coverage because session '{{sessionId}}' was not found",
+    "version_file_not_found": "Agent version file was not found: {{path}}",
     "coverage_read_failed": "Failed to get coverage:",
     "session_started_diagnostic": "Started session '{{session}}' for user '{{userId}}'",
     "session_already_started": "Session '{{session}}' is already started for user '{{userId}}'",
@@ -40,6 +42,6 @@
     "runtime_data_missing": "Agent runtime data directory was not set - the 'jscov.agent.runtimeData' parameter is missing!",
     "runtime_data_not_directory": "Agent runtime data configuration is not a directory: {{path}}",
     "runtime_data_cannot_be_created": "Agent runtime data directory cannot be created: {{path}}.",
-    "agent_version_manifest_cannot_be_written": "Unable to create agent version file: {{path}}",
-    "agent_version_manifest_symbolic_link": "Agent version file must not be a symbolic link: {{path}}"
+    "agent_version_file_cannot_be_written": "Unable to create agent version file: {{path}}",
+    "agent_version_file_symbolic_link": "Agent version file must not be a symbolic link: {{path}}"
 }

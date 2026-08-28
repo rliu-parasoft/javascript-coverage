@@ -794,6 +794,114 @@ describe('startAgent', () => {
         }));
     });
 
+    it('deletes a finished session through DELETE /coverage/:sessionId', async () => {
+        const { baseUrl, url } = await startTestAgent();
+        const { session } = await (await fetch(url)).json() as { session: string };
+        await fetch(new URL('/session/stop', baseUrl));
+
+        const response = await fetch(new URL(`/coverage/${session}`, baseUrl), { method: 'DELETE' });
+
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe(JSON.stringify({ skipped: [], deleted: [session] }));
+    });
+
+    it('returns the user-not-found contract when DELETE /coverage/:sessionId has no default user', async () => {
+        const { baseUrl } = await startTestAgent();
+
+        const response = await fetch(new URL('/coverage/runtime_coverage_20260807_1647_0', baseUrl), { method: 'DELETE' });
+
+        expect(response.status).toBe(404);
+        const body = await response.json() as { messageCode: number; message: string };
+        expect(body).toEqual({
+            messageCode: 307,
+            message: i18n.t('coverage_delete_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+        expect(body.message).toContain(DEFAULT_USER_ID);
+    });
+
+    it('logs default-user context when DELETE /coverage/:sessionId cannot find the user', async () => {
+        await configureLogger(true);
+        const { baseUrl } = await startTestAgent({ debug: true });
+        const log = vi.spyOn(LoggerProvider.file, 'debug');
+        log.mockClear();
+
+        const response = await fetch(new URL('/coverage/runtime_coverage_20260807_1647_0', baseUrl), { method: 'DELETE' });
+        const body = await response.json() as { message: string };
+
+        expect(body.message).toContain(DEFAULT_USER_ID);
+        expect(log).toHaveBeenCalledWith(body.message);
+    });
+
+    it('returns the skipped not-found response when DELETE /coverage/:sessionId has an unknown session', async () => {
+        const { baseUrl, url } = await startTestAgent();
+        await fetch(url);
+        await fetch(new URL('/session/stop', baseUrl));
+        const session = 'runtime_coverage_20260807_1647_99';
+
+        const response = await fetch(new URL(`/coverage/${session}`, baseUrl), { method: 'DELETE' });
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+            deleted: [],
+            skipped: [{ id: session, messageCode: 350, reason: i18n.t('coverage_delete_session_not_found') }]
+        });
+    });
+
+    it('returns the skipped in-progress response when DELETE /coverage/:sessionId targets an active session', async () => {
+        const { baseUrl, url } = await startTestAgent();
+        const { session } = await (await fetch(url)).json() as { session: string };
+
+        const response = await fetch(new URL(`/coverage/${session}`, baseUrl), { method: 'DELETE' });
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+            deleted: [],
+            skipped: [{ id: session, messageCode: 301, reason: i18n.t('coverage_delete_session_in_progress') }]
+        });
+    });
+
+    it('returns the user-not-found contract when an active session user directory is removed', async () => {
+        const { runtimeData, baseUrl, url } = await startTestAgent();
+        const { session } = await (await fetch(url)).json() as { session: string };
+        rmSync(join(runtimeData, DEFAULT_USER_ID), { recursive: true });
+
+        const response = await fetch(new URL(`/coverage/${session}`, baseUrl), { method: 'DELETE' });
+
+        expect(response.status).toBe(404);
+        const body = await response.json() as { messageCode: number; message: string };
+        expect(body).toEqual({
+            messageCode: 307,
+            message: i18n.t('coverage_delete_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+        expect(body.message).toContain(DEFAULT_USER_ID);
+    });
+
+    it('localizes the DELETE /coverage/:sessionId user-not-found response', async () => {
+        await i18n.changeLanguage('zh');
+        const { baseUrl } = await startTestAgent();
+
+        const response = await fetch(new URL('/coverage/runtime_coverage_20260807_1647_0', baseUrl), { method: 'DELETE' });
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({
+            messageCode: 307,
+            message: i18n.t('coverage_delete_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+    });
+
+    it('returns one success and one user-not-found response for concurrent deletion of the final session', async () => {
+        const { baseUrl, url } = await startTestAgent();
+        const { session } = await (await fetch(url)).json() as { session: string };
+        await fetch(new URL('/session/stop', baseUrl));
+
+        const responses = await Promise.all([
+            fetch(new URL(`/coverage/${session}`, baseUrl), { method: 'DELETE' }),
+            fetch(new URL(`/coverage/${session}`, baseUrl), { method: 'DELETE' })
+        ]);
+
+        expect((await Promise.all(responses.map((response) => response.status))).sort()).toEqual([200, 404]);
+    });
+
     it('returns the internal-error contract and retains the session after stop persistence fails', async () => {
         const consoleError = vi.spyOn(LoggerProvider.console, 'error');
         const { runtimeData, baseUrl, url } = await startTestAgent();

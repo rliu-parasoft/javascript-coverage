@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from 'express';
 import { currentAgentDescriptor } from '../agent-info.js';
 import type { AgentConfig } from '../configuration/config.js';
-import { type ErrorResponse, toConfigResponse, toInfoResponse, toStatusResponse } from './responses.js';
+import { type DeleteCoverageResponse, type ErrorResponse, toConfigResponse, toInfoResponse, toStatusResponse } from './responses.js';
 import i18n from '../i18n.js';
 import { LoggerProvider } from '../logging/logger.js';
 import {
@@ -134,6 +134,24 @@ function sessionStop(sessions: SessionService): RouteRegistrar {
     };
 }
 
+function coverageDelete(sessions: SessionService): RouteRegistrar {
+    return (app) => {
+        app.delete('/coverage/:sessionId', (request, response) => {
+            const sessionId = request.params.sessionId;
+            try {
+                const body: DeleteCoverageResponse = sessions.deleteCoverageSession(sessionId, DEFAULT_USER_ID);
+                response.status(body.skipped.length === 0 ? 200 : 400).json(body);
+            } catch (error) {
+                if (error instanceof UserIdNotFoundError) {
+                    respondExpectedError(response, 404, 307, error.message);
+                    return;
+                }
+                respondInternalError(response, i18n.t('coverage_delete_failed', { session: sessionId, userId: DEFAULT_USER_ID }), error);
+            }
+        });
+    };
+}
+
 export function createRoutes(config: AgentConfig, sessions: SessionService): readonly RouteRegistrar[] {
-    return [statusRoute(sessions), configRoute(config), infoRoute(), coverageRoute(sessions), sessionStart(sessions), sessionStop(sessions)];
+    return [statusRoute(sessions), configRoute(config), infoRoute(), coverageRoute(sessions), sessionStart(sessions), sessionStop(sessions), coverageDelete(sessions)];
 }

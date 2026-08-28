@@ -1,12 +1,14 @@
-import { closeSync, lstatSync, mkdirSync, openSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, lstatSync, mkdirSync, openSync, readdirSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { clearCoverageHits, getCoverage } from '../coverage/runtime-coverage.js';
 import i18n from '../i18n.js';
 import { LoggerProvider } from '../logging/logger.js';
 import { errorMessage } from '../utils.js';
+import type { DeleteCoverageResponse, SkippedCoverage } from '../server/responses.js';
 
 export const DEFAULT_USER_ID = '__default__';
+const SESSION_ID_PREFIX = 'runtime_coverage_';
 
 export class SessionAlreadyStartedError extends Error {
     readonly sessionId: string;
@@ -132,12 +134,129 @@ export class SessionService {
         }
     }
 
+    deleteCoverageSession(sessionId: string, userId = DEFAULT_USER_ID): DeleteCoverageResponse {
+        if (!this.isSessionIdSafe(sessionId) || !this.isSessionFileName(`${sessionId}.json`)) {
+            return { skipped: [this.toSkipped(sessionId, 350, 'coverage_delete_session_not_found')], deleted: [] };
+        }
+        return this.deleteCoverageSessions([sessionId], userId);
+    }
+
+    deleteAllCoverageSessions(userId = DEFAULT_USER_ID): DeleteCoverageResponse {
+        // Keep collection selection explicit so an empty caller-provided ID list can never delete every session.
+        return this.deleteCoverageSessions(undefined, userId);
+    }
+
+    private deleteCoverageSessions(sessionIds: readonly string[] | undefined, userId: string): DeleteCoverageResponse {
+        const isCollectionDelete = sessionIds === undefined;
+        const inProgressMessageCode = isCollectionDelete ? 300 : 301;
+        const userDirectory = this.getExistingUserDirectory(userId);
+        const selectedSessionIds = isCollectionDelete
+            ? readdirSync(userDirectory, { withFileTypes: true })
+                .filter((entry) => entry.isFile() && this.isSessionFileName(entry.name))
+                .map((entry) => parse(entry.name).name)
+            : [...sessionIds];
+        const skipped: SkippedCoverage[] = [];
+        const deleted: string[] = [];
+        const inProgressSession = this.getInProgressSession(userId);
+
+        if (!this.knownUsers.has(userId)) {
+            if (inProgressSession !== undefined && selectedSessionIds.every((sessionId) => sessionId === inProgressSession)) {
+                return {
+                    skipped: selectedSessionIds.map((sessionId) => this.toSkipped(sessionId, inProgressMessageCode, 'coverage_delete_session_in_progress')),
+                    deleted: []
+                };
+            }
+            throw new UserIdNotFoundError(i18n.t('coverage_delete_user_not_found', { userId }));
+        }
+
+        for (const sessionId of selectedSessionIds) {
+            if (!this.isSessionIdSafe(sessionId)) {
+                skipped.push(this.toSkipped(sessionId, 350, 'coverage_delete_session_not_found'));
+                continue;
+            }
+            // A reservation stays visible during reset so lifecycle operations cannot delete its file.
+            if (inProgressSession === sessionId) {
+                skipped.push(this.toSkipped(sessionId, inProgressMessageCode, 'coverage_delete_session_in_progress'));
+                continue;
+            }
+            const sessionFilePath = join(userDirectory, `${sessionId}.json`);
+            try {
+                if (!lstatSync(sessionFilePath, { throwIfNoEntry: false })) {
+                    skipped.push(this.toSkipped(sessionId, 350, 'coverage_delete_session_not_found'));
+                    continue;
+                }
+                unlinkSync(sessionFilePath);
+            } catch (error) {
+                LoggerProvider.file.debug(i18n.t('coverage_delete_session_remove_failed_diagnostic', {
+                    error: errorMessage(error),
+                    session: sessionId,
+                    sessionFilePath,
+                    userId
+                }));
+                skipped.push(this.toSkipped(sessionId, 303, 'coverage_delete_session_remove_failed', { sessionFilePath }));
+                continue;
+            }
+            LoggerProvider.file.debug(i18n.t('coverage_delete_session_removed_diagnostic', { session: sessionId, userId }));
+            deleted.push(sessionId);
+        }
+
+        if (isCollectionDelete || deleted.length > 0) {
+            this.removeUserIfNoSessionFilesRemain(userId, userDirectory);
+        }
+        return { skipped, deleted };
+    }
+
+    private getExistingUserDirectory(userId: string): string {
+        const userDirectory = this.getUserDirectory(userId);
+        const stat = lstatSync(userDirectory, { throwIfNoEntry: false });
+        if (!stat?.isDirectory()) {
+            throw new UserIdNotFoundError(i18n.t('coverage_delete_user_not_found', { userId }));
+        }
+        return userDirectory;
+    }
+
+    private getInProgressSession(userId: string): string | undefined {
+        return this.activeSessionForUsers.get(userId) ?? this.startingSessionForUsers.get(userId);
+    }
+
+    private isSessionIdSafe(sessionId: string): boolean {
+        return !sessionId.includes('/') && !sessionId.includes('\\') && !sessionId.includes('\0');
+    }
+
+    private isSessionFileName(fileName: string): boolean {
+        return fileName.startsWith(SESSION_ID_PREFIX) && parse(fileName).ext === '.json';
+    }
+
+    private toSkipped(sessionId: string, messageCode: number, reasonKey: string, variables?: Record<string, string>): SkippedCoverage {
+        return { id: sessionId, messageCode, reason: i18n.t(reasonKey, variables) };
+    }
+
+    private removeUserIfNoSessionFilesRemain(userId: string, userDirectory: string): void {
+        try {
+            const entries = readdirSync(userDirectory);
+            if (entries.some((entry) => this.isSessionFileName(entry))) {
+                return;
+            }
+            this.knownUsers.delete(userId);
+            // Keep unrelated runtime-data files intact after the coverage user becomes inactive.
+            if (entries.length === 0) {
+                rmdirSync(userDirectory);
+            }
+        } catch (error) {
+            LoggerProvider.file.debug(i18n.t('coverage_delete_user_cleanup_failed_diagnostic', {
+                error: errorMessage(error),
+                userDirectory,
+                userId
+            }));
+        }
+    }
+
     private reserveSessionFile(userId: string): SessionReservation {
         const userDirectory = this.ensureUserDirectory(userId);
         const timestamp = formatTimestamp(this.now());
 
         for (let sequence = 0; ; sequence += 1) {
-            const sessionId = `runtime_coverage_${timestamp}_${sequence}`;
+            const sessionId = `${SESSION_ID_PREFIX}${timestamp}_${sequence}`;
             const filePath = join(userDirectory, `${sessionId}.json`);
             try {
                 // The exclusive write atomically reserves the session ID while initializing valid JSON.

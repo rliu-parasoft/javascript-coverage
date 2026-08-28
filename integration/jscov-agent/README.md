@@ -158,6 +158,32 @@ start with no successful `/session/start` request:
 }
 ```
 
+## Delete session coverage
+
+Delete a finished session's coverage file by supplying its session ID:
+
+```powershell
+$sessionId = 'runtime_coverage_20260807_1603_0'
+Invoke-RestMethod -Method Delete "http://127.0.0.1:8050/coverage/$sessionId"
+```
+
+A successful request returns `200` with the deleted session ID:
+
+```json
+{
+  "skipped": [],
+  "deleted": [
+    "runtime_coverage_20260807_1603_0"
+  ]
+}
+```
+
+The request returns `400` with a `skipped` entry when the session cannot be
+deleted: message code `350` means the session was not found, message code
+`301` means it is still active, and message code `303` means its JSON file
+could not be removed. If the default user or its runtime-data directory is
+absent, the request instead returns `404` with message code `307`.
+
 ## Configuration
 
 The agent accepts parameters via command-line arguments and an optional JSONC settings file. Command-line values take precedence over settings-file values.

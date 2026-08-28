@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../../src/i18n.js';
 import { LoggerProvider } from '../../src/logging/logger.js';
+import type { DeleteCoverageResponse } from '../../src/server/responses.js';
 import {
     CannotStopSessionInProgressError,
     CannotStopSessionNotStartedError,
@@ -14,14 +15,35 @@ import {
 } from '../../src/session/session-service.js';
 
 const unlinkFailure = vi.hoisted(() => ({ enabled: false }));
+const cleanupReadFailure = vi.hoisted(() => ({ enabled: false }));
+const sessionFileStatFailure = vi.hoisted(() => ({ path: undefined as string | undefined }));
+const unsafeSessionIdStatAttempt = vi.hoisted(() => ({ enabled: false }));
 const writeFailure = vi.hoisted(() => ({ enabled: false, partial: false }));
 const duringCoverageReset = vi.hoisted(() => ({ callback: undefined as (() => void) | undefined }));
+const duringCoveragePersistence = vi.hoisted(() => ({ callback: undefined as (() => void) | undefined }));
 vi.mock('node:fs', async (importOriginal) => {
     const actual = await importOriginal<typeof import('node:fs')>();
+    const actualLstatSync = actual.lstatSync;
+    const actualReaddirSync = actual.readdirSync;
     const actualUnlinkSync = actual.unlinkSync;
     const actualWriteFileSync = actual.writeFileSync;
     return {
         ...actual,
+        lstatSync: (...args: Parameters<typeof actualLstatSync>) => {
+            if (unsafeSessionIdStatAttempt.enabled) {
+                throw new Error('unsafe session ID attempted filesystem stat');
+            }
+            if (sessionFileStatFailure.path === args[0]) {
+                throw new Error('session file inspection failed');
+            }
+            return actualLstatSync(...args);
+        },
+        readdirSync: (...args: Parameters<typeof actualReaddirSync>) => {
+            if (cleanupReadFailure.enabled) {
+                throw new Error('cleanup inspection failed');
+            }
+            return actualReaddirSync(...args);
+        },
         unlinkSync: (...args: Parameters<typeof actualUnlinkSync>) => {
             if (unlinkFailure.enabled) {
                 throw new Error('cleanup failed');
@@ -35,7 +57,11 @@ vi.mock('node:fs', async (importOriginal) => {
                 }
                 throw new Error('write failed');
             }
-            return actualWriteFileSync(...args);
+            const result = actualWriteFileSync(...args);
+            if (args[2] === 'utf8') {
+                duringCoveragePersistence.callback?.();
+            }
+            return result;
         }
     };
 });
@@ -67,9 +93,13 @@ describe('SessionService', () => {
 
     afterEach(async () => {
         unlinkFailure.enabled = false;
+        cleanupReadFailure.enabled = false;
+        sessionFileStatFailure.path = undefined;
+        unsafeSessionIdStatAttempt.enabled = false;
         writeFailure.enabled = false;
         writeFailure.partial = false;
         duringCoverageReset.callback = undefined;
+        duringCoveragePersistence.callback = undefined;
         await LoggerProvider.close();
         temporaryRoots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }));
         if (hadCoverage) {
@@ -284,6 +314,306 @@ describe('SessionService', () => {
         expect(JSON.parse(readFileSync(join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`), 'utf8')))
             .toEqual({ '/app.js': { s: { '0': 3 }, f: { '0': 2 }, b: { '0': [4, 5] } } });
         expect(service.startSession()).toBe('runtime_coverage_20260807_1603_1');
+    });
+
+    it('deletes a finished session and unregisters its final user', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        service.stopSession();
+
+        expect(service.deleteCoverageSession(sessionId)).toEqual({ skipped: [], deleted: [sessionId] });
+        expect(existsSync(join(runtimeData, DEFAULT_USER_ID))).toBe(false);
+        expect(() => service.stopSession()).toThrow(UserIdNotFoundError);
+    });
+
+    it('deletes all persisted coverage sessions and skips the active session', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const completedSessionId = service.startSession();
+        service.stopSession();
+        const activeSessionId = service.startSession();
+
+        expect(service.deleteAllCoverageSessions()).toEqual({
+            skipped: [{
+                id: activeSessionId,
+                messageCode: 300,
+                reason: i18n.t('coverage_delete_session_in_progress')
+            }],
+            deleted: [completedSessionId]
+        });
+    });
+
+    it('retains unrelated JSON files while deleting all coverage sessions', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        service.stopSession();
+        const unrelatedFile = join(runtimeData, DEFAULT_USER_ID, 'metadata.json');
+        writeFileSync(unrelatedFile, '{}');
+        const log = vi.spyOn(LoggerProvider.file, 'debug');
+
+        expect(service.deleteAllCoverageSessions()).toEqual({ skipped: [], deleted: [sessionId] });
+        expect(existsSync(unrelatedFile)).toBe(true);
+        expect(() => service.stopSession()).toThrow(UserIdNotFoundError);
+        expect(log).toHaveBeenCalledTimes(1);
+        expect(log).toHaveBeenCalledWith(i18n.t('coverage_delete_session_removed_diagnostic', {
+            session: sessionId,
+            userId: DEFAULT_USER_ID
+        }));
+    });
+
+    it('unregisters a user whose final session is deleted while unrelated files remain', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        service.stopSession();
+        const unrelatedFile = join(runtimeData, DEFAULT_USER_ID, 'metadata.json');
+        writeFileSync(unrelatedFile, '{}');
+
+        expect(service.deleteCoverageSession(sessionId)).toEqual({ skipped: [], deleted: [sessionId] });
+        expect(existsSync(unrelatedFile)).toBe(true);
+        expect(() => service.stopSession()).toThrow(UserIdNotFoundError);
+    });
+
+    it('unregisters an already-empty user during collection deletion', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        service.stopSession();
+        rmSync(join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`));
+
+        expect(service.deleteAllCoverageSessions()).toEqual({ skipped: [], deleted: [] });
+        expect(existsSync(join(runtimeData, DEFAULT_USER_ID))).toBe(false);
+        expect(() => service.stopSession()).toThrow(UserIdNotFoundError);
+    });
+
+    it('returns skipped code 301 when deleting a starting session', () => {
+        const service = new SessionService(createRuntimeData(), fixedDate);
+        let response: DeleteCoverageResponse | undefined;
+        duringCoverageReset.callback = () => {
+            response = service.deleteCoverageSession('runtime_coverage_20260807_1603_0');
+        };
+
+        service.startSession();
+
+        expect(Object.keys(response!)).toEqual(['skipped', 'deleted']);
+        expect(response).toEqual({
+            deleted: [],
+            skipped: [{
+                id: 'runtime_coverage_20260807_1603_0',
+                messageCode: 301,
+                reason: i18n.t('coverage_delete_session_in_progress')
+            }]
+        });
+    });
+
+    it('returns skipped code 301 when deleting an active session', () => {
+        const service = new SessionService(createRuntimeData(), fixedDate);
+        const sessionId = service.startSession();
+        const response = service.deleteCoverageSession(sessionId);
+
+        expect(Object.keys(response)).toEqual(['skipped', 'deleted']);
+        expect(response).toEqual({
+            deleted: [],
+            skipped: [{
+                id: sessionId,
+                messageCode: 301,
+                reason: i18n.t('coverage_delete_session_in_progress')
+            }]
+        });
+    });
+
+    it('returns skipped code 350 when a finished session file does not exist', () => {
+        const service = new SessionService(createRuntimeData(), fixedDate);
+        service.startSession();
+        service.stopSession();
+
+        expect(service.deleteCoverageSession('runtime_coverage_20260807_1603_1')).toEqual({
+            deleted: [],
+            skipped: [{
+                id: 'runtime_coverage_20260807_1603_1',
+                messageCode: 350,
+                reason: i18n.t('coverage_delete_session_not_found')
+            }]
+        });
+    });
+
+    it('reports an unknown user while deleting coverage', () => {
+        const service = new SessionService(createRuntimeData(), fixedDate);
+
+        expect(() => service.deleteCoverageSession('runtime_coverage_20260807_1603_0', 'unknown-user'))
+            .toThrow(UserIdNotFoundError);
+    });
+
+    it('reports a user whose runtime directory was externally removed while deleting coverage', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        service.startSession();
+        service.stopSession();
+        rmSync(join(runtimeData, DEFAULT_USER_ID), { recursive: true });
+
+        expect(() => service.deleteCoverageSession('runtime_coverage_20260807_1603_0'))
+            .toThrow(UserIdNotFoundError);
+    });
+
+    it('returns skipped code 303 when removing a finished session file fails', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        service.stopSession();
+        unlinkFailure.enabled = true;
+
+        expect(service.deleteCoverageSession(sessionId)).toEqual({
+            deleted: [],
+            skipped: [{
+                id: sessionId,
+                messageCode: 303,
+                reason: i18n.t('coverage_delete_session_remove_failed', {
+                    sessionFilePath: join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`)
+                })
+            }]
+        });
+    });
+
+    it('returns skipped code 303 when inspecting a finished session file fails', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        service.stopSession();
+        const sessionFilePath = join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`);
+        const log = vi.spyOn(LoggerProvider.file, 'debug');
+        sessionFileStatFailure.path = sessionFilePath;
+
+        expect(service.deleteCoverageSession(sessionId)).toEqual({
+            skipped: [{
+                id: sessionId,
+                messageCode: 303,
+                reason: i18n.t('coverage_delete_session_remove_failed', { sessionFilePath })
+            }],
+            deleted: []
+        });
+        expect(log).toHaveBeenCalledWith(i18n.t('coverage_delete_session_remove_failed_diagnostic', {
+            error: 'session file inspection failed',
+            session: sessionId,
+            sessionFilePath,
+            userId: DEFAULT_USER_ID
+        }));
+    });
+
+    it('retains a completed session file while another session is active', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const completedSessionId = service.startSession();
+        service.stopSession();
+        const activeSessionId = service.startSession();
+
+        expect(service.deleteCoverageSession(completedSessionId)).toEqual({
+            deleted: [completedSessionId],
+            skipped: []
+        });
+        expect(existsSync(join(runtimeData, DEFAULT_USER_ID, `${activeSessionId}.json`))).toBe(true);
+        expect(service.getActiveSession()).toBe(activeSessionId);
+    });
+
+    it('does not delete a file outside the user directory when the session ID traverses', () => {
+        const runtimeData = createRuntimeData();
+        const sentinelFilePath = join(runtimeData, 'outside.json');
+        const service = new SessionService(runtimeData, fixedDate);
+        service.startSession();
+        service.stopSession();
+        writeFileSync(sentinelFilePath, '{"preserve":true}');
+        unsafeSessionIdStatAttempt.enabled = true;
+
+        expect(service.deleteCoverageSession('../outside')).toEqual({
+            deleted: [],
+            skipped: [{
+                id: '../outside',
+                messageCode: 350,
+                reason: i18n.t('coverage_delete_session_not_found')
+            }]
+        });
+        expect(readFileSync(sentinelFilePath, 'utf8')).toBe('{"preserve":true}');
+    });
+
+    it('does not delete a non-session JSON file requested as a coverage session', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        service.startSession();
+        service.stopSession();
+        const unrelatedFile = join(runtimeData, DEFAULT_USER_ID, 'metadata.json');
+        writeFileSync(unrelatedFile, '{}');
+        unsafeSessionIdStatAttempt.enabled = true;
+        const response = service.deleteCoverageSession('metadata');
+
+        expect(Object.keys(response)).toEqual(['skipped', 'deleted']);
+        expect(response).toEqual({
+            deleted: [],
+            skipped: [{
+                id: 'metadata',
+                messageCode: 350,
+                reason: i18n.t('coverage_delete_session_not_found')
+            }]
+        });
+        expect(readFileSync(unrelatedFile, 'utf8')).toBe('{}');
+    });
+
+    it('rejects a NUL session ID before filesystem access', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        service.startSession();
+        service.stopSession();
+        unsafeSessionIdStatAttempt.enabled = true;
+        const sessionId = 'runtime_coverage_20260807_1603_0\0invalid';
+
+        expect(service.deleteCoverageSession(sessionId)).toEqual({
+            deleted: [],
+            skipped: [{
+                id: sessionId,
+                messageCode: 350,
+                reason: i18n.t('coverage_delete_session_not_found')
+            }]
+        });
+    });
+
+    it('preserves a successful delete when user cleanup inspection fails', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        service.stopSession();
+        const log = vi.spyOn(LoggerProvider.file, 'debug');
+        cleanupReadFailure.enabled = true;
+
+        expect(service.deleteCoverageSession(sessionId)).toEqual({ deleted: [sessionId], skipped: [] });
+        expect(existsSync(join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`))).toBe(false);
+        expect(() => service.stopSession()).toThrow(CannotStopSessionNotStartedError);
+        expect(log).toHaveBeenCalledWith(i18n.t('coverage_delete_user_cleanup_failed_diagnostic', {
+            error: 'cleanup inspection failed',
+            userDirectory: join(runtimeData, DEFAULT_USER_ID),
+            userId: DEFAULT_USER_ID
+        }));
+    });
+
+    it('returns skipped code 301 and keeps the file while a session is stopping', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        let response: DeleteCoverageResponse | undefined;
+        duringCoveragePersistence.callback = () => {
+            response = service.deleteCoverageSession(sessionId);
+        };
+
+        service.stopSession();
+
+        expect(response).toEqual({
+            deleted: [],
+            skipped: [{
+                id: sessionId,
+                messageCode: 301,
+                reason: i18n.t('coverage_delete_session_in_progress')
+            }]
+        });
+        expect(existsSync(join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`))).toBe(true);
     });
 
     it('logs a missing session file and recreates it while stopping', () => {

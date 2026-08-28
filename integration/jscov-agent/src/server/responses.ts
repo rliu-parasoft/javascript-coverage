@@ -6,6 +6,17 @@ export interface ErrorResponse {
     message: string;
 }
 
+export interface SkippedCoverage {
+    id: string;
+    messageCode: number;
+    reason: string;
+}
+
+export interface DeleteCoverageResponse {
+    skipped: SkippedCoverage[];
+    deleted: string[];
+}
+
 export interface StatusResponse {
     session: string | null;
 }

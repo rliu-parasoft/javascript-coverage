@@ -16,6 +16,7 @@
 ## Localization
 
 - When changing a user-facing i18n message, update every supported locale with equivalent meaning and consistent terminology.
+- When generating or editing any user-visible message (e.g., i18n `.properties` or `.json` values, log messages), phrase it the way a native speaker would; grammatically correct but awkward phrasing is not acceptable. Apply this to English and Chinese, the currently supported languages.
 
 ## Repository Knowledge
 

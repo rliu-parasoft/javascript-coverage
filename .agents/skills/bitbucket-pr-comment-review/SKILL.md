@@ -59,10 +59,12 @@ Read review comments on a Bitbucket pull request, verify technical validity agai
 Use this exact structure:
 
 ### PR comment assessment
-- Comment: <short quote or summary>
+- Comment: [<comment id>](<pr-url>/overview?commentId=<comment id>): <short quote or summary>
 - Verdict: <valid | partially valid | not supported>
 - Evidence: <file paths and key behavior>
 - Recommendation: <accept/reject/partial and why>
+
+Link target: build the URL from the resolved PR URL (step 1) as `<pr-url>/overview?commentId=<comment id>`; this opens the comment directly in Bitbucket.
 
 ### Proposed changes
 - <bullets of concrete code/test updates, or "none">

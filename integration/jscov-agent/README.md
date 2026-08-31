@@ -300,7 +300,12 @@ If the settings file is missing, unreadable, points to a directory, or contains 
 Run these commands from `integration/jscov-agent/`:
 
 ```powershell
+# Production bundle; default mode, writes dist/agent.js
 npm run build
+
+# Local development bundle; explicit opt-in, writes dist-dev/agent.js
+npm run build:dev
+
 npm test
 npm run lint:report
 ```
@@ -312,4 +317,10 @@ For the Gradle lifecycle, run the repository wrapper from the project root:
 .\gradlew.bat distribution
 ```
 
-The module build creates `dist/agent.js`. The root distribution places `agent.js` and `agent.jsonc` in `integration/jscov-agent/` inside the release ZIP.
+The default npm build writes the production bundle to `dist/agent.js`.
+Use `npm run build -- --mode development` only for local development output in
+`dist-dev/agent.js`.
+
+Production builds do not publish source maps or bundler source metadata. Only
+`dist/agent.js` is copied into the release ZIP, alongside `agent.jsonc`,
+under `integration/jscov-agent/`.

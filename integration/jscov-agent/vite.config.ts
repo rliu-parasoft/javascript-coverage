@@ -1,19 +1,23 @@
 import { defineConfig } from 'vite';
 
-const outDir = 'dist';
+export default defineConfig(({ mode }) => {
+    const isDevelopment = mode === 'development';
 
-export default defineConfig({
-    build: {
-        ssr: 'src/agent.ts',
-        outDir,
-        rollupOptions: {
-            output: {
-                format: 'es',
-                entryFileNames: 'agent.js'
+    return {
+        build: {
+            ssr: 'src/agent.ts',
+            outDir: isDevelopment ? 'dist-dev' : 'dist',
+            minify: isDevelopment ? false : 'oxc',
+            sourcemap: isDevelopment,
+            rollupOptions: {
+                output: {
+                    format: 'es',
+                    entryFileNames: 'agent.js'
+                }
             }
+        },
+        ssr: {
+            noExternal: true
         }
-    },
-    ssr: {
-        noExternal: true
-    }
+    };
 });

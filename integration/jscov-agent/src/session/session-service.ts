@@ -4,6 +4,7 @@ import { basename, isAbsolute, join, parse, relative, resolve, sep } from 'node:
 import type { PassThrough } from 'node:stream';
 import { ZipFile } from 'yazl';
 import { clearCoverageHits, getCoverage } from '../coverage/runtime-coverage.js';
+import { remapRuntimeCoverage } from '../coverage/source-map-remapper.js';
 import i18n from '../i18n.js';
 import { LoggerProvider } from '../logging/logger.js';
 import { errorMessage } from '../utils.js';
@@ -365,7 +366,7 @@ export class SessionService {
         try {
             temporaryFileDescriptor = openSync(temporaryFilePath, 'wx');
             temporaryFileCreated = true;
-            writeFileSync(temporaryFileDescriptor, JSON.stringify(getCoverage()), 'utf8');
+            writeFileSync(temporaryFileDescriptor, JSON.stringify(remapRuntimeCoverage(getCoverage())), 'utf8');
             closeSync(temporaryFileDescriptor);
             temporaryFileDescriptor = undefined;
             renameSync(temporaryFilePath, filePath);

@@ -178,6 +178,16 @@ file remains valid for retry. Debug and error diagnostics for stopping a session
 identify the user/session or the concrete session-file path while intentionally
 omitting coverage content.
 
+Before serialization, file coverage entries with an `inputSourceMap` are mapped
+back to their original source locations. A generated file can produce multiple
+source-file entries, and entries that resolve to the same source path are
+merged. Entries without an `inputSourceMap` remain unchanged. Istanbul applies
+partial source maps on a best-effort basis; if no coverage item can be mapped,
+the generated coverage is retained and the stop request continues. Successfully
+remapped entries omit the consumed `inputSourceMap`. Remap failures and
+zero-mapping fallbacks write the generated path and diagnostic details to the
+file debug log; the generated coverage is retained when remapping is canceled.
+
 If session persistence fails, the server returns `500` with a localized,
 contextual error message. The file log retains the error trace for diagnostics:
 

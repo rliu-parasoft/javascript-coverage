@@ -13,8 +13,11 @@
     "lint:report": "eslint src --format eslint-formatter-checkstyle --output-file build/reports/eslint/checkstyle.xml"
   },
   "dependencies": {
+    "@jridgewell/trace-mapping": "^0.3.31",
     "express": "^5.2.1",
     "i18next": "21.10.0",
+    "istanbul-lib-coverage": "^3.2.2",
+    "istanbul-lib-source-maps": "~5.0.6",
     "jsonc-parser": "3.3.1",
     "winston": "3.19.0",
     "yargs-parser": "^22.0.0",

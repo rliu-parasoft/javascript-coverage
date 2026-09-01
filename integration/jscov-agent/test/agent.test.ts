@@ -661,6 +661,58 @@ describe('agent preload', () => {
         }
     }, 10_000);
 
+    it('remaps live preloaded-process coverage for every source on session stop', async () => {
+        const app = spawnPreloadedApp(
+            'aut-server-source-map.js',
+            [],
+            (_isolatedRoot, runtimeData) => [
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.session.autostart=false'
+            ]
+        );
+        const output = collectOutput(app.child);
+
+        try {
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SOURCE_MAP_READY');
+            const agentUrl = await waitForAgentUrl(output.stdout, output.stderr);
+            const startResponse = await fetch(`${agentUrl}/session/start`);
+            expect(startResponse.status).toBe(200);
+            const { session } = await startResponse.json() as { session: string };
+
+            app.child.stdin?.write('SET_COVERAGE\n');
+            await waitForOutput(output.stdout, output.stderr, 'AUT_SOURCE_MAP_UPDATED');
+
+            const stopResponse = await fetch(`${agentUrl}/session/stop`, { method: 'POST' });
+            expect(stopResponse.status).toBe(200);
+            expect(await stopResponse.json()).toEqual({ session: null });
+
+            const persisted = JSON.parse(readFileSync(
+                join(app.isolatedRoot, 'runtime-data', '__default__', `${session}.json`),
+                'utf8'
+            ));
+            expect(Object.keys(persisted)).toEqual([
+                'C:\\project\\src\\first.ts',
+                'C:\\project\\src\\second.ts'
+            ]);
+            expect(persisted['C:\\project\\src\\first.ts']).toMatchObject({
+                s: { '0': 3 },
+                f: { '0': 5 },
+                b: { '0': [7, 0] }
+            });
+            expect(persisted['C:\\project\\src\\second.ts']).toMatchObject({
+                s: { '0': 4 },
+                f: { '0': 6 },
+                b: { '0': [8, 0] }
+            });
+            expect(persisted['C:\\project\\src\\first.ts']).not.toHaveProperty('inputSourceMap');
+            expect(persisted['C:\\project\\src\\second.ts']).not.toHaveProperty('inputSourceMap');
+            expect(persisted).not.toHaveProperty('C:\\project\\dist\\bundle.js');
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
     it('logs an agent server startup error without preventing the AUT from running', async () => {
         const invalidPort = -1;
         const app = spawnPreloadedApp('aut-server.js', [

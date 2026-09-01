@@ -81,6 +81,25 @@ vi.mock('../../src/coverage/runtime-coverage.js', async (importOriginal) => {
 
 const fixedDate = () => new Date(2026, 7, 7, 16, 3);
 const coverageGlobal = globalThis as typeof globalThis & { __coverage__?: Record<string, unknown> };
+const generatedSourceMapPath = 'C:\\project\\dist\\bundle.js';
+const originalSourceMapPath = 'C:\\project\\src\\app.ts';
+
+function mappedCoverage(inputSourceMap: object): Record<string, unknown> {
+    const location = {
+        start: { line: 1, column: 0 },
+        end: { line: 1, column: 5 }
+    };
+    return {
+        path: generatedSourceMapPath,
+        statementMap: { '0': location },
+        fnMap: { '0': { name: 'run', decl: location, loc: location } },
+        branchMap: { '0': { type: 'if', line: 1, loc: location, locations: [location, location] } },
+        s: { '0': 3 },
+        f: { '0': 2 },
+        b: { '0': [4, 5] },
+        inputSourceMap
+    };
+}
 
 interface ZipEntry {
     readonly name: string;
@@ -507,6 +526,107 @@ describe('SessionService', () => {
         expect(JSON.parse(readFileSync(join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`), 'utf8')))
             .toEqual({ '/app.js': { s: { '0': 3 }, f: { '0': 2 }, b: { '0': [4, 5] } } });
         expect(service.startSession()).toBe('runtime_coverage_20260807_1603_1');
+    });
+
+    it('remaps coverage before persisting the stopped session', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        coverageGlobal.__coverage__ = {
+            [generatedSourceMapPath]: mappedCoverage({
+                version: 3,
+                file: generatedSourceMapPath,
+                sources: [originalSourceMapPath],
+                names: [],
+                mappings: 'AAAA'
+            })
+        };
+
+        service.stopSession();
+
+        const persisted = JSON.parse(readFileSync(join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`), 'utf8'));
+        expect(persisted[originalSourceMapPath]).toMatchObject({
+            path: originalSourceMapPath,
+            statementMap: { '0': { start: { line: 1, column: 0 } } },
+            fnMap: { '0': { loc: { start: { line: 1, column: 0 } } } },
+            s: { '0': 3 },
+            f: { '0': 2 },
+            b: { '0': [4, 5] }
+        });
+        expect(persisted[originalSourceMapPath].branchMap['0'].locations[0].start)
+            .toEqual({ line: 1, column: 0 });
+        expect(persisted[originalSourceMapPath]).not.toHaveProperty('inputSourceMap');
+        expect(persisted).not.toHaveProperty(generatedSourceMapPath);
+    });
+
+    it('keeps generated coverage when the source map cannot be applied', () => {
+        const runtimeData = createRuntimeData();
+        const log = vi.spyOn(LoggerProvider.file, 'warn');
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        const coverage = mappedCoverage({ version: 3, mappings: 'not-valid' });
+        coverageGlobal.__coverage__ = { [generatedSourceMapPath]: coverage };
+
+        service.stopSession();
+
+        expect(JSON.parse(readFileSync(join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`), 'utf8')))
+            .toEqual({ [generatedSourceMapPath]: coverage });
+        expect(log).toHaveBeenCalledWith(expect.stringContaining(i18n.t('coverage_remap_failed_with_path_diagnostic', {
+            path: generatedSourceMapPath,
+            error: ''
+        }).trimEnd()));
+    });
+
+    it('logs and preserves generated coverage when a valid source map has no mappings', () => {
+        const runtimeData = createRuntimeData();
+        const log = vi.spyOn(LoggerProvider.file, 'warn');
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        const coverage = mappedCoverage({
+            version: 3,
+            file: generatedSourceMapPath,
+            sources: [originalSourceMapPath],
+            names: [],
+            mappings: ''
+        });
+        coverageGlobal.__coverage__ = { [generatedSourceMapPath]: coverage };
+
+        service.stopSession();
+
+        expect(JSON.parse(readFileSync(join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`), 'utf8')))
+            .toEqual({ [generatedSourceMapPath]: coverage });
+        expect(log).toHaveBeenCalledWith(i18n.t('coverage_remap_failed_with_path_diagnostic', {
+            path: generatedSourceMapPath,
+            error: i18n.t('coverage_remap_no_entries_diagnostic')
+        }));
+    });
+
+    it('logs and preserves generated coverage when a mapped position has a null column', () => {
+        const runtimeData = createRuntimeData();
+        const log = vi.spyOn(LoggerProvider.file, 'warn');
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        const coverage = mappedCoverage({
+            version: 3,
+            file: generatedSourceMapPath,
+            sources: [originalSourceMapPath],
+            names: [],
+            mappings: 'AAAA'
+        });
+        const statementMap = coverage.statementMap as {
+            '0': { start: { column: number | null } };
+        };
+        statementMap['0'].start.column = null;
+        coverageGlobal.__coverage__ = { [generatedSourceMapPath]: coverage };
+
+        service.stopSession();
+
+        expect(JSON.parse(readFileSync(join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`), 'utf8')))
+            .toEqual({ [generatedSourceMapPath]: coverage });
+        expect(log).toHaveBeenCalledWith(expect.stringContaining(i18n.t('coverage_remap_failed_with_path_diagnostic', {
+            path: generatedSourceMapPath,
+            error: ''
+        }).trimEnd()));
     });
 
     it('deletes a finished session and unregisters its final user', () => {

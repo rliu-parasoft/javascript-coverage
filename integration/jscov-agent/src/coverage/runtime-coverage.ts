@@ -1,3 +1,5 @@
+import { isRecord } from '../utils.js';
+
 export function clearCoverageHits(): void {
     const coverage = getCoverage();
     for (const fileCoverage of Object.values(coverage)) {
@@ -42,11 +44,4 @@ function resetBranchCounters(branchCounters: unknown): void {
             }
         }
     }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-        return false;
-    }
-    return true;
 }

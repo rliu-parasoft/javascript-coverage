@@ -12,3 +12,9 @@
 ## Type Checking
 
 - Run `npm exec -- tsc --noEmit` from the target Node module after changing TypeScript source or tests.
+
+## Localized Diagnostics
+
+- When an HTTP response and the agent file log use the same message, use one key without the `_diagnostic` suffix. That message must omit filesystem paths and raw underlying errors unless required by the API contract.
+- Use a `*_diagnostic` key only for a more detailed message written exclusively to the agent file log. It may include filesystem paths and underlying error details.
+- When the file log needs extra context, use separate public and diagnostic keys.

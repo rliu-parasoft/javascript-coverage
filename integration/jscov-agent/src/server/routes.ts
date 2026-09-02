@@ -202,6 +202,17 @@ function sessionStop(sessions: SessionService): RouteRegistrar {
 
 function coverageDelete(sessions: SessionService): RouteRegistrar {
     return (app) => {
+        app.delete('/coverage', (_request, response) => {
+            try {
+                response.status(200).json(sessions.deleteAllCoverageSessions(DEFAULT_USER_ID));
+            } catch (error) {
+                if (error instanceof UserIdNotFoundError) {
+                    respondExpectedError(response, 404, 307, error.message);
+                    return;
+                }
+                respondInternalError(response, i18n.t('coverage_delete_all_failed', { userId: DEFAULT_USER_ID }), error);
+            }
+        });
         app.delete('/coverage/:sessionId', (request, response) => {
             const sessionId = request.params.sessionId;
             try {

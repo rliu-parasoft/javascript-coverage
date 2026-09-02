@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
@@ -886,6 +886,87 @@ describe('startAgent', () => {
         expect(log).toHaveBeenCalledWith(i18n.t('session_not_started', {
             userId: DEFAULT_USER_ID
         }));
+    });
+
+    it('deletes completed sessions and skips an active session through DELETE /coverage', async () => {
+        const { baseUrl, url } = await startTestAgent();
+        const { session: completedSession } = await (await fetch(url)).json() as { session: string };
+        await fetch(new URL('/session/stop', baseUrl));
+        const { session: activeSession } = await (await fetch(url)).json() as { session: string };
+
+        const response = await fetch(new URL('/coverage', baseUrl), { method: 'DELETE' });
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({
+            deleted: [completedSession],
+            skipped: [{
+                id: activeSession,
+                messageCode: 300,
+                reason: i18n.t('coverage_delete_session_in_progress')
+            }]
+        });
+    });
+
+    it('returns the collection user-not-found contract when DELETE /coverage has no default user', async () => {
+        const { baseUrl } = await startTestAgent();
+
+        const response = await fetch(new URL('/coverage', baseUrl), { method: 'DELETE' });
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({
+            messageCode: 307,
+            message: i18n.t('coverage_delete_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+    });
+
+    it('returns the collection user-not-found contract when DELETE /coverage has no user directory', async () => {
+        const { runtimeData, baseUrl, url } = await startTestAgent();
+        await fetch(url);
+        rmSync(join(runtimeData, DEFAULT_USER_ID), { recursive: true });
+
+        const response = await fetch(new URL('/coverage', baseUrl), { method: 'DELETE' });
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({
+            messageCode: 307,
+            message: i18n.t('coverage_delete_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+    });
+
+    it('removes the final user directory through DELETE /coverage', async () => {
+        const { runtimeData, baseUrl, url } = await startTestAgent();
+        const { session } = await (await fetch(url)).json() as { session: string };
+        await fetch(new URL('/session/stop', baseUrl));
+
+        const response = await fetch(new URL('/coverage', baseUrl), { method: 'DELETE' });
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ deleted: [session], skipped: [] });
+        expect(existsSync(join(runtimeData, DEFAULT_USER_ID))).toBe(false);
+        const stopResponse = await fetch(new URL('/session/stop', baseUrl));
+        expect(stopResponse.status).toBe(404);
+        expect(await stopResponse.json()).toEqual({
+            messageCode: 103,
+            message: i18n.t('session_user_not_found', { userId: DEFAULT_USER_ID })
+        });
+    });
+
+    it('returns one success and one user-not-found response for concurrent DELETE /coverage requests', async () => {
+        const { baseUrl, url } = await startTestAgent();
+        await fetch(url);
+        await fetch(new URL('/session/stop', baseUrl));
+
+        const responses = await Promise.all([
+            fetch(new URL('/coverage', baseUrl), { method: 'DELETE' }),
+            fetch(new URL('/coverage', baseUrl), { method: 'DELETE' })
+        ]);
+
+        expect(responses.map((response) => response.status).sort()).toEqual([200, 404]);
+        const missingUserResponse = responses.find((response) => response.status === 404)!;
+        expect(await missingUserResponse.json()).toEqual({
+            messageCode: 307,
+            message: i18n.t('coverage_delete_user_not_found', { userId: DEFAULT_USER_ID })
+        });
     });
 
     it('deletes a finished session through DELETE /coverage/:sessionId', async () => {

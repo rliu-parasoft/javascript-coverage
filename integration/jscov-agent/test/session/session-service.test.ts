@@ -789,6 +789,25 @@ describe('SessionService', () => {
         });
     });
 
+    it('returns skipped code 302 when removing a persisted session during collection deletion fails', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        service.stopSession();
+        unlinkFailure.enabled = true;
+
+        expect(service.deleteAllCoverageSessions()).toEqual({
+            deleted: [],
+            skipped: [{
+                id: sessionId,
+                messageCode: 302,
+                reason: i18n.t('coverage_delete_session_remove_failed', {
+                    sessionFilePath: join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`)
+                })
+            }]
+        });
+    });
+
     it('returns skipped code 303 when inspecting a finished session file fails', () => {
         const runtimeData = createRuntimeData();
         const service = new SessionService(runtimeData, fixedDate);

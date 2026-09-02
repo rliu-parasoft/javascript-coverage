@@ -20,6 +20,10 @@ export interface SessionArchive {
     readonly output: PassThrough;
 }
 
+type CoverageDeletion =
+    | { readonly kind: 'all' }
+    | { readonly kind: 'session'; readonly sessionId: string };
+
 export class SessionAlreadyStartedError extends Error {
     readonly sessionId: string;
 
@@ -208,23 +212,23 @@ export class SessionService {
         if (!this.isSessionIdSafe(sessionId) || !this.isSessionFileName(`${sessionId}.json`)) {
             return { skipped: [this.toSkipped(sessionId, 350, 'coverage_delete_session_not_found')], deleted: [] };
         }
-        return this.deleteCoverageSessions([sessionId], userId);
+        return this.deleteCoverage({ kind: 'session', sessionId }, userId);
     }
 
     deleteAllCoverageSessions(userId = DEFAULT_USER_ID): DeleteCoverageResponse {
-        // Keep collection selection explicit so an empty caller-provided ID list can never delete every session.
-        return this.deleteCoverageSessions(undefined, userId);
+        return this.deleteCoverage({ kind: 'all' }, userId);
     }
 
-    private deleteCoverageSessions(sessionIds: readonly string[] | undefined, userId: string): DeleteCoverageResponse {
-        const isCollectionDelete = sessionIds === undefined;
+    private deleteCoverage(operation: CoverageDeletion, userId: string): DeleteCoverageResponse {
+        const isCollectionDelete = operation.kind === 'all';
         const inProgressMessageCode = isCollectionDelete ? 300 : 301;
+        const removalFailureMessageCode = isCollectionDelete ? 302 : 303;
         const userDirectory = this.getExistingUserDirectory(userId);
         const selectedSessionIds = isCollectionDelete
             ? readdirSync(userDirectory, { withFileTypes: true })
                 .filter((entry) => entry.isFile() && this.isSessionFileName(entry.name))
                 .map((entry) => parse(entry.name).name)
-            : [...sessionIds];
+            : [operation.sessionId];
         const skipped: SkippedCoverage[] = [];
         const deleted: string[] = [];
         const inProgressSession = this.getInProgressSession(userId);
@@ -263,7 +267,8 @@ export class SessionService {
                     sessionFilePath,
                     userId
                 }));
-                skipped.push(this.toSkipped(sessionId, 303, 'coverage_delete_session_remove_failed', { sessionFilePath }));
+                // The REST contracts distinguish collection and single-session removal failures.
+                skipped.push(this.toSkipped(sessionId, removalFailureMessageCode, 'coverage_delete_session_remove_failed', { sessionFilePath }));
                 continue;
             }
             LoggerProvider.file.debug(i18n.t('coverage_delete_session_removed_diagnostic', { session: sessionId, userId }));

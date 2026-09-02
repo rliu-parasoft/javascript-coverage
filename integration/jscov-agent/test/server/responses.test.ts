@@ -1,3 +1,4 @@
+import { sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { currentAgentDescriptor } from '../../src/agent-info.js';
 import { toConfigResponse, toInfoResponse, toStatusResponse } from '../../src/server/responses.js';
@@ -29,6 +30,7 @@ describe('REST response mappers', () => {
         })).toEqual({
             settings: '/path/to/agent.jsonc',
             runtimeData: '/path/to/runtime/coverage',
+            descriptionFile: `${sep}path${sep}to${sep}runtime${sep}coverage${sep}version.json`,
             sessionAutostart: false,
             restServerEnabled: true,
             restServerPort: 8050,
@@ -49,6 +51,7 @@ describe('REST response mappers', () => {
         })).toEqual({
             settings: null,
             runtimeData: '/path/to/runtime/coverage',
+            descriptionFile: `${sep}path${sep}to${sep}runtime${sep}coverage${sep}version.json`,
             sessionAutostart: false,
             restServerEnabled: true,
             restServerPort: 8050,

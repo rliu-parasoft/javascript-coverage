@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { AgentDescriptor } from '../agent-info.js';
 import type { AgentConfig } from '../configuration/config.js';
 
@@ -24,6 +25,7 @@ export interface StatusResponse {
 export interface ConfigResponse {
     settings: string | null;
     runtimeData: string;
+    descriptionFile: string;
     sessionAutostart: boolean;
     restServerEnabled: boolean;
     restServerPort: number;
@@ -44,6 +46,8 @@ export function toConfigResponse(config: AgentConfig): ConfigResponse {
     return {
         settings: config.settings ?? null,
         runtimeData: config.runtimeData,
+        // The manifest path follows the effective runtime-data directory before the file is generated.
+        descriptionFile: join(config.runtimeData, 'version.json'),
         sessionAutostart: config.sessionAutostart,
         restServerEnabled: config.restServerEnabled,
         restServerPort: config.restServerPort,

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveConfiguration, type AgentConfig } from '../../src/configuration/config.js';
 import i18n from '../../src/i18n.js';
@@ -351,6 +351,7 @@ describe('startAgent', () => {
         expect(await response.json()).toEqual({
             settings: '/path/to/agent.jsonc',
             runtimeData: '/path/to/runtime/coverage',
+            descriptionFile: `${sep}path${sep}to${sep}runtime${sep}coverage${sep}version.json`,
             sessionAutostart: false,
             restServerEnabled: true,
             restServerPort: 0,
@@ -383,6 +384,7 @@ describe('startAgent', () => {
         expect(await response.json()).toEqual({
             settings,
             runtimeData,
+            descriptionFile: `${runtimeData}${sep}version.json`,
             sessionAutostart: false,
             restServerEnabled: true,
             restServerPort: 0,
@@ -408,6 +410,7 @@ describe('startAgent', () => {
         expect(await response.json()).toEqual({
             settings: null,
             runtimeData: '/path/to/runtime/coverage',
+            descriptionFile: `${sep}path${sep}to${sep}runtime${sep}coverage${sep}version.json`,
             sessionAutostart: false,
             restServerEnabled: true,
             restServerPort: 0,

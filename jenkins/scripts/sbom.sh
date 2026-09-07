@@ -14,7 +14,7 @@ set -e
 #   UPLOAD_TO_DTRACK - Set to "false" to skip the dtrack upload.
 #   PROFILE          - Maven profile passed to sbom-maven-plugin.
 
-SCRIPT_DIR="$(pwd)/jenkins/scripts"
+SCRIPT_DIR="jenkins/scripts"
 # Shared, non-project-specific SBOM scripts are extracted from the clean
 # Jenkins workspace's top-level us/ directory.
 SHARED_REPOSITORY_URL="ssh://git@trove.parasoft.com:7999/bach/code.parasoftcn.com--jjs--jenkins-scripts.git"

@@ -1,0 +1,340 @@
+openapi: 3.0.3
+info:
+  title: Coverage API
+  version: '1.0'
+paths:
+  /coverage:
+    get:
+      tags:
+        - Coverage
+      operationId: getCoverageList
+      summary: Get list of all known sessions
+      responses:
+        '200':
+          description: A list of coverage data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '404':
+          $ref: '#/components/responses/404WithErrorMessage'
+        '500':
+          $ref: '#/components/responses/500WithErrorMessage'
+    delete:
+      tags:
+        - Coverage
+      operationId: deleteAllCoverageFiles
+      summary: Remove all sessions that are not currently active
+      description: Removes coverage data for stopped sessions and reports sessions that are still active.
+      responses:
+        '200':
+          $ref: '#/components/responses/200ResponseWithDeletedSessions'
+        '307':
+          description: Cannot delete coverage because user is not found
+        '400':
+          description: Bad request - deleting active session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletedSessions'
+        '404':
+          description: Cannot delete non existing session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletedSessions'
+        '500':
+          $ref: '#/components/responses/500WithErrorMessage'
+  /coverage/{id}:
+    parameters:
+      - $ref: '#/components/parameters/idPathParam'
+    get:
+      tags:
+        - Coverage
+      operationId: getCoverageBySessionId
+      summary: Get runtime coverage for the given session ID
+      description: >-
+        Returns a ZIP archive containing runtime coverage for the session with the given ID.
+        The format is internal to the engine.
+      responses:
+        '200':
+          description: Coverage data
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/404WithErrorMessage'
+        '405':
+          $ref: '#/components/responses/405WithErrorMessage'
+        '500':
+          $ref: '#/components/responses/500WithErrorMessage'
+    delete:
+      tags:
+        - Coverage
+      operationId: removeCoverageBySessionId
+      summary: Remove coverage data for given session ID if session is stopped
+      responses:
+        '200':
+          $ref: '#/components/responses/200ResponseWithDeletedSessions'
+        '400':
+          $ref: '#/components/responses/400WithDeletedSessions'
+        '404':
+          $ref: '#/components/responses/404WithErrorMessage'
+        '500':
+          $ref: '#/components/responses/500WithErrorMessage'
+  /session/start:
+    get:
+      tags:
+        - Session
+      operationId: startSession
+      summary: Start a new session
+      description: >-
+        Starts a new coverage session and generates a new session ID.
+        Resets the current dynamic coverage image.
+      responses:
+        '200':
+          $ref: '#/components/responses/200ResponseWithSessionStarted'
+        '400':
+          $ref: '#/components/responses/400WithErrorMessage'
+        '500':
+          $ref: '#/components/responses/500WithErrorMessage'
+    post:
+      tags:
+        - Session
+      operationId: startSessionPostMethod
+      summary: Start a new session
+      description: >-
+        Starts a new coverage session and generates a new session ID.
+        Resets the current dynamic coverage image.
+      responses:
+        '200':
+          $ref: '#/components/responses/200ResponseWithSessionStarted'
+        '400':
+          $ref: '#/components/responses/400WithErrorMessage'
+        '500':
+          $ref: '#/components/responses/500WithErrorMessage'
+  /session/stop:
+    get:
+      tags:
+        - Session
+      operationId: stopSessionGetMethod
+      summary: Stop the session
+      description: Stops a coverage session.
+      responses:
+        '200':
+          $ref: '#/components/responses/200ResponseWithSessionStopped'
+        '404':
+          $ref: '#/components/responses/404WithErrorMessage'
+        '500':
+          $ref: '#/components/responses/500WithErrorMessage'
+    post:
+      tags:
+        - Session
+      operationId: stopSessionPostMethod
+      summary: Stop the session
+      description: Stops a coverage session.
+      responses:
+        '200':
+          $ref: '#/components/responses/200ResponseWithSessionStopped'
+        '404':
+          $ref: '#/components/responses/404WithErrorMessage'
+        '500':
+          $ref: '#/components/responses/500WithErrorMessage'
+  /status:
+    get:
+      tags:
+        - Other
+      operationId: getStatus
+      summary: Get status
+      description: Returns the current status of the agent
+      responses:
+        '200':
+          $ref: '#/components/responses/200ResponseWithStatus'
+  /config:
+    get:
+      tags:
+        - Other
+      operationId: getAgentConfig
+      summary: Get properties with agent configuration
+      responses:
+        '200':
+          description: Agent configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+  /info:
+    get:
+      tags:
+        - Other
+      operationId: getAgentInfo
+      summary: Get agent information
+      responses:
+        '200':
+          description: Agent information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InfoResponse'
+components:
+  responses:
+    200ResponseWithDeletedSessions:
+      description: Deletion status
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeletedSessions'
+    200ResponseWithSessionStarted:
+      description: Session started
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SessionStartedResponse'
+    200ResponseWithSessionStopped:
+      description: Session stopped
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SessionStoppedResponse'
+    200ResponseWithStatus:
+      description: Status information
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Status'
+    400WithDeletedSessions:
+      description: Bad request, deletion failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeletedSessions'
+    400WithErrorMessage:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+    404WithErrorMessage:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+    405WithErrorMessage:
+      description: The agent uses this status when version.json is missing while creating the archive.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+    500WithErrorMessage:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorMessage'
+  parameters:
+    idPathParam:
+      name: id
+      in: path
+      required: true
+      description: Session ID
+      schema:
+        type: string
+        pattern: '^runtime_coverage_\d{8}_\d{4}_\d+$'
+  schemas:
+    ErrorMessage:
+      type: object
+      required: [messageCode, message]
+      properties:
+        messageCode:
+          type: integer
+        message:
+          type: string
+          description: Localized diagnostic text.
+    Status:
+      type: object
+      required: [session]
+      properties:
+        session:
+          type: string
+          nullable: true
+          example: '{sessionId}'
+    ConfigResponse:
+      type: object
+      required: [settings, runtimeData, descriptionFile, sessionAutostart, restServerEnabled, restServerPort, debugOn, silentModeOn]
+      properties:
+        settings:
+          type: string
+          nullable: true
+        runtimeData:
+          type: string
+        descriptionFile:
+          type: string
+          description: Absolute path to the version.json file.
+        sessionAutostart:
+          type: boolean
+        restServerEnabled:
+          type: boolean
+        restServerPort:
+          type: integer
+        debugOn:
+          type: boolean
+        silentModeOn:
+          type: boolean
+    InfoResponse:
+      type: object
+      required: [agent-mode, tool-id]
+      properties:
+        agent-mode:
+          type: string
+          enum: [singleuser]
+          example: singleuser
+        tool-id:
+          type: string
+          enum: [parasoft-jscov]
+          example: parasoft-jscov
+    SessionStartedResponse:
+      type: object
+      required: [session]
+      properties:
+        session:
+          type: string
+          nullable: false
+    SessionStoppedResponse:
+      type: object
+      required: [session]
+      properties:
+        session:
+          type: string
+          nullable: true
+    SkippedCoverage:
+      type: object
+      required: [id, messageCode, reason]
+      properties:
+        id:
+          type: string
+          example: '{sessionId}'
+        messageCode:
+          type: integer
+          description: The code representing the specific message or error
+        reason:
+          type: string
+          description: Reason why session was not deleted
+    DeletedSessions:
+      type: object
+      required: [skipped, deleted]
+      properties:
+        skipped:
+          description: List of sessions skipped during deletion
+          type: array
+          items:
+            $ref: '#/components/schemas/SkippedCoverage'
+        deleted:
+          description: List of sessions deleted during deletion
+          type: array
+          items:
+            type: string

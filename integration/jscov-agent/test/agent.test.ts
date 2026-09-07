@@ -205,6 +205,24 @@ describe('agent preload', () => {
         }
     }, 10_000);
 
+    it('serves the OpenAPI definition from the built agent', async () => {
+        const app = spawnPreloadedApp();
+        const output = collectOutput(app.child);
+
+        try {
+            const agentUrl = await waitForAgentUrl(output.stdout, output.stderr);
+            const response = await fetch(`${agentUrl}/openapi.yml`);
+
+            expect(response.status).toBe(200);
+            expect(response.headers.get('content-type')).toMatch(/^text\/plain(?:;|$)/);
+            expect(response.headers.get('content-disposition')).toBeNull();
+            expect(await response.text()).toBe(readFileSync(resolve(moduleRoot, 'openapi.yml'), 'utf8'));
+        } finally {
+            await terminate(app.child, output.closed);
+            removeIsolatedApp(app.isolatedRoot);
+        }
+    }, 10_000);
+
     it('writes debug startup diagnostics to the Jtest-style log file', async () => {
         const app = spawnPreloadedApp(
             'aut-server-sigint.js',

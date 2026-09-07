@@ -94,6 +94,29 @@ pipeline {
             }
         }
 
+        stage('Generate SBOM') {
+            when {
+                expression {
+                    return !params.IS_CHENGDU
+                }
+            }
+            steps {
+                sh '''\
+                    #!/usr/bin/env bash
+                    set -euo pipefail
+
+                    # Generate a single merged SBOM for the distribution using the
+                    # reusable scripts extracted by sbom.sh into the top-level us/
+                    # directory. The entry point runs three steps in order:
+                    #   1. sbom_scan_java.sh : Java SBOM from parasoft-jscov.jar
+                    #   2. sbom_scan_js.sh   : JS SBOM from each integration module
+                    #   3. sbom_process.sh   : merge + dedup + fix + validate + upload
+
+                    ./jenkins/scripts/sbom.sh
+                    '''.stripIndent()
+            }
+        }
+
         stage('Upload') {
             when {
                 expression {
@@ -159,7 +182,21 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: "${params.FILES_TO_UPLOAD},*.log", allowEmptyArchive: true
+            script {
+                def artifactPatterns = ['*.log']
+                def configuredArtifacts = (params.FILES_TO_UPLOAD ?: '').trim()
+
+                if (configuredArtifacts) {
+                    artifactPatterns << configuredArtifacts
+                }
+
+                if (!params.IS_CHENGDU) {
+                    artifactPatterns << 'javascript-coverage-sbom.json'
+                    artifactPatterns << 'javascript-coverage.wiki'
+                }
+
+                archiveArtifacts artifacts: artifactPatterns.join(','), allowEmptyArchive: true
+            }
         }
 
         failure {

@@ -46,6 +46,20 @@ collect_and_archive() {
     cp -R "$rpt_dir"/. "$out_dir/" 2>/dev/null || true
 }
 
+# Detect test failures by scanning collected JUnit XML reports.
+# Returns 1 if any testsuite/testsuites element reports failures>0 or errors>0.
+# Returns 0 when no XML files exist or all reports are clean, so callers can
+# defer to the Gradle exit code in that case.
+detect_test_failures() {
+    local rpt_dir="$1"
+    [[ -d "$rpt_dir" ]] || return 0
+    if find "$rpt_dir" -type f -name '*.xml' -print0 2>/dev/null \
+        | xargs -0 -r grep -lE '(failures|errors)="[1-9][0-9]*"' >/dev/null; then
+        return 1
+    fi
+    return 0
+}
+
 # Append a key=value pair to the unified status file.
 write_status() {
     local key="$1" value="$2"
@@ -59,6 +73,7 @@ case "$mode" in
         result=passed
         bash "$workspace/gradlew" --no-daemon :integration:test || result=failed
         collect_and_archive "$report_dir" "$output_dir"
+        detect_test_failures "$report_dir" || result=failed
         write_status "js_full_status" "$result"
         if [[ "$result" == "failed" ]]; then exit 1; fi
         ;;
@@ -68,6 +83,7 @@ case "$mode" in
         result=passed
         bash "$workspace/gradlew" --no-daemon :integration:test || result=failed
         collect_and_archive "$tia_report_dir" "$tia_output_dir"
+        detect_test_failures "$tia_report_dir" || result=failed
         write_status "js_tia_status" "$result"
         if [[ "$result" == "failed" ]]; then exit 1; fi
         ;;

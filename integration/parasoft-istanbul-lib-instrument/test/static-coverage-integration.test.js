@@ -5,6 +5,8 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const i18n = require('../src/i18n');
+const { name: packageName } = require('../package.json');
 
 const instrumenterPath = path.resolve(__dirname, '../src/index');
 
@@ -49,6 +51,9 @@ describe('static coverage integration', () => {
         }
 
         const { code = 'const value = 1;' } = options;
+        const inputSourceMap = Object.prototype.hasOwnProperty.call(options, 'inputSourceMap')
+            ? JSON.stringify(options.inputSourceMap)
+            : 'undefined';
         const script = [`const index = require(${JSON.stringify(instrumenterPath)});`];
         if (Object.prototype.hasOwnProperty.call(options, 'environmentValueAfterLoad')) {
             const value = options.environmentValueAfterLoad;
@@ -59,7 +64,11 @@ describe('static coverage integration', () => {
             );
         }
         script.push(
-            `index.createInstrumenter().instrumentSync(${JSON.stringify(code)}, 'source.js');`
+            'index.createInstrumenter().instrumentSync(' +
+                JSON.stringify(code) +
+                ", 'source.js', " +
+                inputSourceMap +
+                ');'
         );
 
         execFileSync(process.execPath, ['-e', script.join('\n')], {
@@ -169,5 +178,41 @@ describe('static coverage integration', () => {
         const coverageFiles = files.filter(file => file !== 'version.json');
         assert.lengthOf(coverageFiles, 1);
         assert.match(coverageFiles[0], /^source\.js-.+\.json$/);
+    });
+
+    it('fails instrumentation when static coverage remapping fails', () => {
+        const directory = createTempDirectory();
+        let failure;
+
+        try {
+            instrumentInChild(directory, 'true', {
+                inputSourceMap: {}
+            });
+        } catch (error) {
+            failure = error;
+        }
+
+        assert.instanceOf(failure, Error);
+
+        const stderr = failure.stderr.toString();
+        const expectedPrefix = i18n.t('coverage_remap_failed', {
+            name: packageName,
+            path: 'source.js',
+            reason: ''
+        }).trim();
+        assert.include(stderr, expectedPrefix);
+
+        const coverageRoot = path.join(
+            directory,
+            '.parasoft',
+            'static-coverage'
+        );
+        assert.isTrue(fs.existsSync(coverageRoot));
+
+        const snapshotFiles = fs.readdirSync(coverageRoot).flatMap(processDirectory =>
+            fs.readdirSync(path.join(coverageRoot, processDirectory))
+                .filter(file => file !== 'version.json')
+        );
+        assert.lengthOf(snapshotFiles, 0);
     });
 });

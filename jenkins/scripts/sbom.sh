@@ -18,7 +18,11 @@ set -e
 SCRIPT_DIR="jenkins/scripts"
 # Shared, non-project-specific SBOM scripts are extracted from the clean
 # Jenkins workspace's top-level us/ directory.
-SHARED_REPOSITORY_URL="ssh://git@trove.parasoft.com:7999/bach/code.parasoftcn.com--jjs--jenkins-scripts.git"
+if [ "${IS_CHENGDU}" = "true" ]; then
+    SHARED_REPOSITORY_URL="ssh://git@code.parasoftcn.com:7998/jjs/jenkins-scripts.git"
+else
+    SHARED_REPOSITORY_URL="ssh://git@trove.parasoft.com:7999/bach/code.parasoftcn.com--jjs--jenkins-scripts.git"
+fi
 SHARED_DIR="$(pwd)/us"
 
 git archive --remote="${SHARED_REPOSITORY_URL}" master us | tar -x

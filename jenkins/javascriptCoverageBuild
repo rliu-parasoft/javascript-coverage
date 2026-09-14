@@ -99,7 +99,7 @@ pipeline {
                 script {
                     // Always generate the merged SBOM json. The dtrack upload and
                     // wiki generation are restricted to non-Chengdu builds.
-                    def sbomEnv = params.IS_CHENGDU ? ['UPLOAD_TO_DTRACK=false', 'GENERATE_WIKI=false'] : ['UPLOAD_TO_DTRACK=true', 'GENERATE_WIKI=true']
+                    def sbomEnv = params.IS_CHENGDU ? ['IS_CHENGDU=true', 'UPLOAD_TO_DTRACK=false', 'GENERATE_WIKI=false'] : ['IS_CHENGDU=false', 'UPLOAD_TO_DTRACK=true', 'GENERATE_WIKI=true']
                     withEnv(sbomEnv) {
                         sh '''\
                             #!/usr/bin/env bash
@@ -184,6 +184,9 @@ pipeline {
                             command -v tar >/dev/null 2>&1 || { echo "ERROR: tar is required to publish artifacts."; exit 1; }
                             command -v ssh >/dev/null 2>&1 || { echo "ERROR: ssh is required to publish artifacts."; exit 1; }
                             command -v git >/dev/null 2>&1 || { echo "ERROR: git is required to publish artifacts."; exit 1; }
+
+                            export GIT_BRANCH="${BranchToBuild}"
+                            export GIT_COMMIT="$(git rev-parse HEAD)"
 
                             # The script takes this as the BUILD_ID
                             export BUILD_TAG="jsc.$(date +%Y-%m-%d)"

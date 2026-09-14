@@ -17,11 +17,15 @@ import {
     VersionFileNotFoundError
 } from '../../src/session/session-service.js';
 
-const unlinkFailure = vi.hoisted(() => ({ enabled: false }));
+const unlinkFailure = vi.hoisted(() => ({ enabled: false, value: undefined as unknown }));
 const cleanupReadFailure = vi.hoisted(() => ({ enabled: false }));
 const sessionFileStatFailure = vi.hoisted(() => ({ path: undefined as string | undefined }));
 const unsafeSessionIdStatAttempt = vi.hoisted(() => ({ enabled: false }));
-const writeFailure = vi.hoisted(() => ({ enabled: false, partial: false }));
+const unsafeInternalSessionIdStatAttempt = vi.hoisted(() => ({ enabled: false }));
+const writeFailure = vi.hoisted(() => ({ enabled: false, partial: false, value: undefined as unknown }));
+const reservationWriteFailure = vi.hoisted(() => ({ enabled: false, value: undefined as unknown }));
+const temporaryOpenFailure = vi.hoisted(() => ({ enabled: false }));
+const closeFailure = vi.hoisted(() => ({ remaining: 0 }));
 const duringCoverageReset = vi.hoisted(() => ({ callback: undefined as (() => void) | undefined }));
 const duringCoveragePersistence = vi.hoisted(() => ({ callback: undefined as (() => void) | undefined }));
 vi.mock('node:fs', async (importOriginal) => {
@@ -30,11 +34,16 @@ vi.mock('node:fs', async (importOriginal) => {
     const actualReaddirSync = actual.readdirSync;
     const actualUnlinkSync = actual.unlinkSync;
     const actualWriteFileSync = actual.writeFileSync;
+    const actualCloseSync = actual.closeSync;
+    const actualOpenSync = actual.openSync;
     return {
         ...actual,
         lstatSync: (...args: Parameters<typeof actualLstatSync>) => {
             if (unsafeSessionIdStatAttempt.enabled) {
                 throw new Error('unsafe session ID attempted filesystem stat');
+            }
+            if (unsafeInternalSessionIdStatAttempt.enabled && String(args[0]).includes('outside.json')) {
+                throw new Error('unsafe internally selected session ID attempted filesystem stat');
             }
             if (sessionFileStatFailure.path === args[0]) {
                 throw new Error('session file inspection failed');
@@ -49,16 +58,32 @@ vi.mock('node:fs', async (importOriginal) => {
         },
         unlinkSync: (...args: Parameters<typeof actualUnlinkSync>) => {
             if (unlinkFailure.enabled) {
-                throw new Error('cleanup failed');
+                throw unlinkFailure.value ?? new Error('cleanup failed');
             }
             return actualUnlinkSync(...args);
         },
+        openSync: (...args: Parameters<typeof actualOpenSync>) => {
+            if (temporaryOpenFailure.enabled && String(args[0]).endsWith('.tmp')) {
+                throw new Error('temporary open failed');
+            }
+            return actualOpenSync(...args);
+        },
+        closeSync: (...args: Parameters<typeof actualCloseSync>) => {
+            if (closeFailure.remaining > 0) {
+                closeFailure.remaining -= 1;
+                throw new Error('temporary close failed');
+            }
+            return actualCloseSync(...args);
+        },
         writeFileSync: (...args: Parameters<typeof actualWriteFileSync>) => {
+            if (reservationWriteFailure.enabled && typeof args[2] === 'object') {
+                throw reservationWriteFailure.value ?? new Error('reservation write failed');
+            }
             if (writeFailure.enabled && args[2] === 'utf8') {
                 if (writeFailure.partial) {
                     actualWriteFileSync(args[0], '{', 'utf8');
                 }
-                throw new Error('write failed');
+                throw writeFailure.value ?? new Error('write failed');
             }
             const result = actualWriteFileSync(...args);
             if (args[2] === 'utf8') {
@@ -162,11 +187,18 @@ describe('SessionService', () => {
 
     afterEach(async () => {
         unlinkFailure.enabled = false;
+        unlinkFailure.value = undefined;
         cleanupReadFailure.enabled = false;
         sessionFileStatFailure.path = undefined;
         unsafeSessionIdStatAttempt.enabled = false;
+        unsafeInternalSessionIdStatAttempt.enabled = false;
         writeFailure.enabled = false;
         writeFailure.partial = false;
+        writeFailure.value = undefined;
+        reservationWriteFailure.enabled = false;
+        reservationWriteFailure.value = undefined;
+        temporaryOpenFailure.enabled = false;
+        closeFailure.remaining = 0;
         duringCoverageReset.callback = undefined;
         duringCoveragePersistence.callback = undefined;
         await LoggerProvider.close();
@@ -386,6 +418,7 @@ describe('SessionService', () => {
         );
         expect(() => service.createSessionArchive(sessionId)).toThrow(SessionIdNotFoundError);
     });
+
     it('rejects a version file that is a symbolic link', () => {
         const runtimeData = createRuntimeData();
         const linkedDirectory = createRuntimeData();
@@ -1125,5 +1158,142 @@ describe('SessionService', () => {
 
         expect(JSON.parse(readFileSync(linkedTarget, 'utf8'))).toEqual({ preserve: true });
         expect(JSON.parse(readFileSync(sessionFile, 'utf8'))).toEqual({ '/app.js': { s: { '0': 3 } } });
+    });
+
+    it('rejects a reentrant stop while coverage persistence is in progress', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        let reentrantError: unknown;
+        duringCoveragePersistence.callback = () => {
+            try {
+                service.stopSession();
+            } catch (error) {
+                reentrantError = error;
+            }
+        };
+
+        expect(service.stopSession()).toBe(sessionId);
+        expect(reentrantError).toBeInstanceOf(CannotStopSessionInProgressError);
+        expect((reentrantError as CannotStopSessionInProgressError).sessionId).toBe(sessionId);
+    });
+
+    it('reports an unregistered user whose empty directory still exists during coverage deletion', () => {
+        const runtimeData = createRuntimeData();
+        const userId = 'unregistered-user';
+        mkdirSync(join(runtimeData, userId));
+        const service = new SessionService(runtimeData, fixedDate);
+
+        expect(() => service.deleteAllCoverageSessions(userId)).toThrow(
+            i18n.t('coverage_delete_user_not_found', { userId })
+        );
+    });
+
+    it('rejects a user identifier that resolves to the runtime-data directory', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+
+        expect(() => service.startSession('.')).toThrow(
+            i18n.t('session_user_id_outside_runtime_data', { userId: '.' })
+        );
+    });
+
+    it('propagates non-collision errors while reserving a session file', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        reservationWriteFailure.enabled = true;
+
+        expect(() => service.startSession()).toThrow('reservation write failed');
+    });
+
+    it('logs a temporary-file close cleanup failure during coverage persistence', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        const log = vi.spyOn(LoggerProvider.file, 'debug');
+        closeFailure.remaining = 2;
+
+        expect(() => service.stopSession()).toThrow('temporary close failed');
+        const [closeCleanupMessage] = log.mock.calls.find(([message]) => message.includes('temporary close failed')) ?? [];
+        expect(closeCleanupMessage).toContain(`${sessionId}.json.`);
+        expect(closeCleanupMessage).toContain('temporary close failed');
+    });
+
+    it('logs a temporary-file removal failure during coverage persistence', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        service.startSession();
+        const log = vi.spyOn(LoggerProvider.file, 'debug');
+        writeFailure.enabled = true;
+        unlinkFailure.enabled = true;
+
+        expect(() => service.stopSession()).toThrow('write failed');
+        const [unlinkCleanupMessage] = log.mock.calls.find(([message]) => message.includes('cleanup failed')) ?? [];
+        expect(unlinkCleanupMessage).toContain('.tmp');
+        expect(unlinkCleanupMessage).toContain('cleanup failed');
+    });
+
+    it('adds a non-Error persistence failure to the diagnostic message', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        const log = vi.spyOn(LoggerProvider.file, 'error');
+        writeFailure.enabled = true;
+        writeFailure.value = 'simulated non-Error write failure';
+
+        expect(() => service.stopSession()).toThrow('simulated non-Error write failure');
+        expect(log).toHaveBeenCalledWith(`${i18n.t('session_write_failed_diagnostic', {
+            sessionFilePath: join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`)
+        })} simulated non-Error write failure`);
+    });
+
+    it('skips an unsafe internally selected session ID without deleting files', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        service.startSession();
+        const deleteCoverage = service as unknown as {
+            deleteCoverage(operation: { kind: 'session'; sessionId: string }, userId: string): DeleteCoverageResponse;
+        };
+        unsafeInternalSessionIdStatAttempt.enabled = true;
+
+        expect(deleteCoverage.deleteCoverage({ kind: 'session', sessionId: '../outside' }, DEFAULT_USER_ID)).toEqual({
+            deleted: [],
+            skipped: [{
+                id: '../outside',
+                messageCode: 350,
+                reason: i18n.t('coverage_delete_session_not_found')
+            }]
+        });
+    });
+
+    it('keeps the reserved session file when temporary coverage storage cannot open', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        const sessionId = service.startSession();
+        temporaryOpenFailure.enabled = true;
+
+        expect(() => service.stopSession()).toThrow('temporary open failed');
+        expect(JSON.parse(readFileSync(join(runtimeData, DEFAULT_USER_ID, `${sessionId}.json`), 'utf8'))).toEqual({});
+    });
+
+    it('ignores an ENOENT while removing a failed temporary coverage file', () => {
+        const runtimeData = createRuntimeData();
+        const service = new SessionService(runtimeData, fixedDate);
+        service.startSession();
+        const log = vi.spyOn(LoggerProvider.file, 'debug');
+        writeFailure.enabled = true;
+        unlinkFailure.enabled = true;
+        unlinkFailure.value = Object.assign(new Error('temporary file vanished'), { code: 'ENOENT' });
+
+        expect(() => service.stopSession()).toThrow('write failed');
+        expect(log.mock.calls.map(([message]) => message).join('\n')).not.toContain('temporary file vanished');
+    });
+
+    it('propagates a non-Error reservation failure without creating a session', () => {
+        const service = new SessionService(createRuntimeData(), fixedDate);
+        reservationWriteFailure.enabled = true;
+        reservationWriteFailure.value = 'simulated reservation failure';
+
+        expect(() => service.startSession()).toThrow('simulated reservation failure');
     });
 });

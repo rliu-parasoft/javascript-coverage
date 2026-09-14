@@ -47,6 +47,28 @@ describe('runtime coverage', () => {
         expect(() => clearCoverageHits()).not.toThrow();
     });
 
+    it('ignores malformed coverage records and counter structures', () => {
+        coverageGlobal.__coverage__ = {
+            '/valid.js': {
+                s: { '0': 3, '1': 'invalid' },
+                f: null,
+                b: { '0': [4, 'invalid'], '1': 'invalid' }
+            },
+            '/invalid.js': 'not file coverage',
+            '/invalid-branch-counters.js': { b: 'not counter records' }
+        };
+
+        clearCoverageHits();
+
+        expect(coverageGlobal.__coverage__?.['/valid.js']).toMatchObject({
+            s: { '0': 0, '1': 'invalid' },
+            f: null,
+            b: { '0': [0, 'invalid'], '1': 'invalid' }
+        });
+        expect(coverageGlobal.__coverage__?.['/invalid.js']).toBe('not file coverage');
+        expect(coverageGlobal.__coverage__?.['/invalid-branch-counters.js']).toEqual({ b: 'not counter records' });
+    });
+
     it('preserves coverage objects with custom prototypes', () => {
         const customPrototype = { inherited: 'ignored' };
         const coverage = Object.create(customPrototype) as Record<string, unknown>;

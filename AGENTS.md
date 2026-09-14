@@ -11,6 +11,7 @@
 
 ## Tests
 
+- Separate adjacent unit test cases with one blank line.
 - Use i18n resources for all message expectations; add per-locale route tests only for locale-dependent behavior.
 
 ## Localization

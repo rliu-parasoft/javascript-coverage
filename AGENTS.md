@@ -23,6 +23,13 @@
 
 - When an API uses an HTTP status outside its usual semantics, record the required contract rationale in its specification.
 
+## Jenkins Pipelines
+
+- For version-controlled Jenkins pipelines, document externally configured inputs in the file header.
+- Use `params.*` only for job controls or inputs needed before environment injection; use `env.*` for environment-specific integration values, including DTP settings and session tags.
+- Do not declare Jenkins job parameters in the Jenkinsfile when the job configuration owns them.
+- Bind passwords and other secret values with `withCredentials` only in the stage where they are consumed; document the credential ID in the file header instead of secret variables.
+
 ## Repository Knowledge
 
 - When a task may need repository structural facts or domain details, read `ARCHITECTURE.md` first. It is the lightweight entry point that routes current behavior to `docs/domain/` and accepted future direction to `docs/design/`; from there, conditionally load only the specific documents the task needs.

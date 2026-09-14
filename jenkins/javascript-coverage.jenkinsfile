@@ -1,0 +1,236 @@
+/*
+ * Jenkins job: javascript.coverage.coverage-for-javascript
+ *
+ * Jenkins job parameter:
+ * - AGENT_LABEL (String): Label of the Jenkins agent that runs the pipeline.
+ * - BRANCH_TO_BUILD (String): Branch selected by the Jenkins job for this build.
+ * - DTP_CREDENTIAL_ID (Credentials, Username with password): DTP credential used to generate the coverage report and publish it when enabled.
+ * - PUBLISH_REPORT_TO_DTP (Boolean): Whether to publish the static coverage XML report to DTP.
+ * - NOTIFY_RECIPIENTS (String, optional): Comma-, whitespace-, or semicolon-separated failure-email recipients.
+ *
+ * Environment variables:
+ * - JAVASCRIPT_COVERAGE_ARCHIVE_URL: URL of the JavaScript Coverage distribution ZIP.
+ * - DTP_URL: DTP server URL used when publishing the coverage report.
+ * - DTP_PROJECT: DTP project that receives the coverage report.
+ * - DTP_SESSION_TAG (required when publishing): Session tag used to distinguish coverage data in DTP.
+ */
+
+def parseRecipientList(String rawRecipients) {
+    def recipients = (rawRecipients ?: '')
+        .split(/[ ,\s;]+/)
+        .collect { it.trim() }
+        .findAll { !it.isEmpty() }
+
+    if (recipients.isEmpty()) {
+        return []
+    }
+
+    def emailPattern = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/
+    def invalidRecipients = recipients.findAll { !(it ==~ emailPattern) }
+    if (!invalidRecipients.isEmpty()) {
+        error("Invalid email recipients: ${invalidRecipients.join(', ')}")
+    }
+
+    return recipients.unique()
+}
+
+def extractFailureReason(String logPath) {
+    if (!fileExists(logPath)) {
+        return 'unknown'
+    }
+
+    for (String line : readFile(logPath).readLines()) {
+        def matcher = (line =~ /(?i)^\s*(FAILURE:|ERROR:)\s*(.+)\s*$/)
+        if (matcher.matches()) {
+            return matcher[0][2].trim()
+        }
+    }
+
+    return 'unknown'
+}
+
+def createStaticCoverageReport(boolean publishReportToDtp) {
+    withEnv([
+        "PUBLISH_ARGUMENT=${publishReportToDtp ? '-publish' : ''}",
+        "PUBLISH_REPORT_TO_DTP=${publishReportToDtp}"
+    ]) {
+        sh '''\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            set +x
+
+            settings_path='artifacts/static-coverage.properties'
+            # The settings file contains the credential only while the report command runs.
+            trap 'rm -f "$settings_path"' EXIT
+            cat > "$settings_path" <<EOF
+            parasoft.eula.accepted=true
+            dtp.url=${DTP_URL:-}
+            dtp.user=${DTP_USER:-}
+            dtp.password=${DTP_PASSWORD:-}
+            dtp.project=${DTP_PROJECT:-}
+            session.tag=${DTP_SESSION_TAG:-}
+            report.dtp.publish=${PUBLISH_REPORT_TO_DTP:-false}
+            console.verbosity.level=high
+            EOF
+
+            mkdir -p reports/static-coverage
+            java -jar artifacts/static-coverage-tools/parasoft-jscov.jar coverage \\
+              -app integration/jscov-agent \\
+              -settings "$settings_path" \\
+              -report reports/static-coverage ${PUBLISH_ARGUMENT:+$PUBLISH_ARGUMENT} 2>&1 | tee artifacts/logs/static-coverage-report.log
+            '''.stripIndent()
+    }
+}
+
+pipeline {
+    agent { label params.AGENT_LABEL }
+
+    options {
+        timestamps()
+        skipDefaultCheckout(true)
+    }
+
+    stages {
+        stage('Preflight') {
+            steps {
+                sh '''\
+                    #!/usr/bin/env bash
+                    set -euo pipefail
+                    for command in bash java curl unzip npm find grep mkdir rm tee; do
+                        command -v "$command" >/dev/null 2>&1 || {
+                            echo "ERROR: $command is required on this Jenkins agent." >&2
+                            exit 1
+                        }
+                    done
+                    '''.stripIndent()
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Static coverage: prepare tools') {
+            steps {
+                sh '''\
+                    #!/usr/bin/env bash
+                    set -euo pipefail
+
+                    archive_path='artifacts/javascript-coverage.zip'
+                    tools_directory='artifacts/static-coverage-tools'
+                    instrumenter_path="$tools_directory/parasoft-istanbul-lib-instrument-6.0.3-1.tgz"
+                    agent_instrumenter_path='integration/jscov-agent/vendor/parasoft-istanbul-lib-instrument-6.0.3-1.tgz'
+
+                    rm -rf "$tools_directory"
+                    rm -f "$archive_path" "$agent_instrumenter_path"
+                    mkdir -p "$tools_directory" "$(dirname "$agent_instrumenter_path")" artifacts/logs
+
+                    echo "Downloading JavaScript Coverage distribution from $JAVASCRIPT_COVERAGE_ARCHIVE_URL"
+                    curl --fail --location --output "$archive_path" "$JAVASCRIPT_COVERAGE_ARCHIVE_URL"
+                    unzip -p "$archive_path" parasoft-jscov.jar > "$tools_directory/parasoft-jscov.jar"
+                    unzip -p "$archive_path" integration/parasoft-istanbul-lib-instrument/parasoft-istanbul-lib-instrument-6.0.3-1.tgz > "$instrumenter_path"
+                    cp "$instrumenter_path" "$agent_instrumenter_path"
+
+                    test -s "$tools_directory/parasoft-jscov.jar" || { echo 'ERROR: parasoft-jscov.jar was not found in the distribution.' >&2; exit 1; }
+                    test -s "$instrumenter_path" || { echo 'ERROR: Parasoft instrumenter archive was not found in the distribution.' >&2; exit 1; }
+                    echo "Prepared static coverage tools in $tools_directory"
+                    '''.stripIndent()
+            }
+        }
+
+        stage('Static coverage: build agent') {
+            steps {
+                sh '''\
+                    #!/usr/bin/env bash
+                    set -euo pipefail
+
+                    coverage_directory='integration/jscov-agent/.parasoft/static-coverage'
+                    instrumenter_path='integration/jscov-agent/vendor/parasoft-istanbul-lib-instrument-6.0.3-1.tgz'
+                    rm -rf "$coverage_directory"
+                    test ! -e "$coverage_directory"
+                    test -s "$instrumenter_path" || { echo 'ERROR: The nightly Parasoft instrumenter archive is missing.' >&2; exit 1; }
+
+                    cd integration/jscov-agent
+                    # The nightly archive may be repackaged with identical version metadata but new bytes.
+                    # Ignore package-lock.json here so npm verifies and installs the archive prepared above.
+                    npm install --package-lock=false 2>&1 | tee ../../artifacts/logs/npm-install.log
+                    PARASOFT_STATIC_COVERAGE_ENABLE=true npm run build:instrument 2>&1 | tee ../../artifacts/logs/instrumented-build.log
+                    '''.stripIndent()
+            }
+        }
+
+        stage('Static coverage: verify snapshots') {
+            steps {
+                sh '''\
+                    #!/usr/bin/env bash
+                    set -euo pipefail
+
+                    coverage_directory='integration/jscov-agent/.parasoft/static-coverage'
+                    if [ ! -d "$coverage_directory" ] || ! find "$coverage_directory" -type f -name '*.json' -print -quit | grep -q .; then
+                        echo 'ERROR: Static coverage JSON was not generated.' >&2
+                        exit 1
+                    fi
+                    echo "Verified static coverage JSON in $coverage_directory"
+                    '''.stripIndent()
+            }
+        }
+
+        stage('Static coverage: create and publish report') {
+            steps {
+                script {
+                    def publishReportToDtp = params.PUBLISH_REPORT_TO_DTP ?: false
+
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: params.DTP_CREDENTIAL_ID,
+                            usernameVariable: 'DTP_USER',
+                            passwordVariable: 'DTP_PASSWORD'
+                        )
+                    ]) {
+                        // parasoft-jscov.jar requires DTP credentials even when DTP publication is disabled.
+                        createStaticCoverageReport(publishReportToDtp)
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'artifacts/logs/*.log,integration/jscov-agent/.parasoft/static-coverage/**/*.json,reports/static-coverage/**', allowEmptyArchive: true, fingerprint: true
+        }
+
+        failure {
+            script {
+                def recipients = ((params.NOTIFY_RECIPIENTS ?: '') as String).trim()
+
+                def recipientList = parseRecipientList(recipients)
+                if (recipientList.isEmpty()) {
+                    echo 'NOTIFY_RECIPIENTS is empty; skipping failure email.'
+                    return
+                }
+
+                def failureReason = ['artifacts/logs/npm-install.log', 'artifacts/logs/instrumented-build.log', 'artifacts/logs/static-coverage-report.log']
+                    .collect { extractFailureReason(it) }
+                    .find { it != 'unknown' } ?: 'unknown'
+
+                mail(
+                    to: recipientList.join(','),
+                    subject: "[javascript-coverage] Job failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """\
+                        Job failed.
+
+                        Build URL: ${env.BUILD_URL}
+                        Failure Reason: ${failureReason}
+
+                        Artifacts:
+                        - ${env.BUILD_URL}artifact/integration/jscov-agent/.parasoft/static-coverage/
+                        - ${env.BUILD_URL}artifact/reports/static-coverage/
+                        """.stripIndent()
+                )
+            }
+        }
+    }
+}

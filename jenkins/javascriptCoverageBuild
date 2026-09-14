@@ -175,7 +175,24 @@ pipeline {
                             exit $exitValue
                             '''.stripIndent()
                     } else {
-                        echo 'IS_CHENGDU is false; upload is skipped. TODO.'
+                        sh '''\
+                            #!/usr/bin/env bash
+                            set -euo pipefail
+                            set +x
+
+                            command -v curl >/dev/null 2>&1 || { echo "ERROR: curl is required to publish artifacts."; exit 1; }
+                            command -v tar >/dev/null 2>&1 || { echo "ERROR: tar is required to publish artifacts."; exit 1; }
+                            command -v ssh >/dev/null 2>&1 || { echo "ERROR: ssh is required to publish artifacts."; exit 1; }
+                            command -v git >/dev/null 2>&1 || { echo "ERROR: git is required to publish artifacts."; exit 1; }
+
+                            # The script takes this as the BUILD_ID
+                            export BUILD_TAG="jsc.$(date +%Y-%m-%d)"
+                            export PROJECT_BUILD_DIR="javascript-coverage/${BranchToBuild}"
+
+                            # Upload build to sponge
+                            git archive --remote ssh://git@trove.parasoft.com:7999/help/fileserver-scripts.git master fileserver-scripts | tar x
+                            ./fileserver-scripts/team-parasoft-findings/upload-build-to-sponge.sh 2>&1 | tee upload.log
+                            '''.stripIndent()
                     }
                 }
             }

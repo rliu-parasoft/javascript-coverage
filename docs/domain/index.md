@@ -16,6 +16,7 @@ Every factual statement in this directory must be directly supported by the curr
 ## Documents
 
 - [Static Coverage Contract](static-coverage-contract.md): the current Node-to-Java snapshot contract, including input rules, deduplication, source attribution, and static-report interpretation.
+- [Runtime Coverage Agent](runtime-coverage-agent.md): the runtime execution-coverage agent's REST contract, session lifecycle, runtime version.json manifest, and configuration-resolution rules.
 
 ## Related Documents
 

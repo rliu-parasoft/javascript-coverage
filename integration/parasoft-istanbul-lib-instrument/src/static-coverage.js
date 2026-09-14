@@ -59,10 +59,12 @@ function remapCoverageData(coverageData) {
             return mappedFiles.map(file => uniqueFiles[file].toJSON());
         }
     } catch (e) {
-        debug(i18n.t('coverage_remap_failed', {
+        console.error(i18n.t('coverage_remap_failed', {
+            name: name,
             path: coverageData.path,
             reason: e.message
         }));
+        throw e;
     }
 
     return [coverageData];

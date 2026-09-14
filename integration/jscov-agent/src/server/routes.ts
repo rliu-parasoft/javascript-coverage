@@ -15,6 +15,7 @@ import {
     VersionFileNotFoundError
 } from '../session/session-service.js';
 import { errorMessage } from '../utils.js';
+import openapiYaml from '../../openapi.yml?raw';
 
 type RouteRegistrar = (app: Express) => void;
 type SessionLogContext = { session?: string; userId: string };
@@ -74,6 +75,14 @@ function infoRoute(): RouteRegistrar {
     return (app) => {
         app.get('/info', (_request, response) => {
             response.json(toInfoResponse(currentAgentDescriptor));
+        });
+    };
+}
+
+function openapiRoute(): RouteRegistrar {
+    return (app) => {
+        app.get('/openapi.yml', (_request, response) => {
+            response.type('text/plain').status(200).send(openapiYaml);
         });
     };
 }
@@ -234,6 +243,7 @@ export function createRoutes(config: AgentConfig, sessions: SessionService): rea
         statusRoute(sessions),
         configRoute(config),
         infoRoute(),
+        openapiRoute(),
         coverageRoute(sessions),
         sessionArchiveDownloadRoute(sessions),
         coverageDelete(sessions),

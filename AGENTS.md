@@ -11,12 +11,13 @@
 
 ## Tests
 
-- Use i18n resources for all user-visible message expectations; add per-locale route tests only for locale-dependent behavior.
+- Use i18n resources for all message expectations; add per-locale route tests only for locale-dependent behavior.
 
 ## Localization
 
-- When changing a user-facing i18n message, update every supported locale with equivalent meaning and consistent terminology.
-- When generating or editing any user-visible message (e.g., i18n `.properties` or `.json` values, log messages), phrase it the way a native speaker would; grammatically correct but awkward phrasing is not acceptable. Apply this to English and Chinese, the currently supported languages.
+- All messages(CLI output, log messages, exception messages) must be managed through i18n resource files to avoid hardcoded strings.
+- When changing an i18n message, update every supported locale with equivalent meaning and consistent terminology.
+- When generating or editing any i18n message (e.g., `.properties` or `.json` values), phrase it the way a native speaker would; grammatically correct but awkward phrasing is not acceptable. Apply this to English and Chinese, the currently supported languages.
 
 ## API Contracts
 

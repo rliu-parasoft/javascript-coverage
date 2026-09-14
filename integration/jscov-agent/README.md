@@ -316,6 +316,13 @@ npm run build
 # Local development bundle; explicit opt-in, writes dist-dev/agent.js
 npm run build:dev
 
+# Instrumented bundle for static coverage; writes dist/agent.js and dist/agent.js.map
+$env:PARASOFT_STATIC_COVERAGE_ENABLE="true"
+npm run build:instrument
+
+# Remove generated build, report, cache, and static-coverage output.
+npm run clean
+
 npm test
 npm run lint:report
 ```
@@ -330,6 +337,15 @@ For the Gradle lifecycle, run the repository wrapper from the project root:
 The default npm build writes the production bundle to `dist/agent.js`.
 Use `npm run build -- --mode development` only for local development output in
 `dist-dev/agent.js`.
+
+The instrumented build keeps its source map and writes static coverage under
+`.parasoft/static-coverage/<process-id>/` when
+`PARASOFT_STATIC_COVERAGE_ENABLE=true` is set before the build starts. The
+local Vite plugin directly instruments the SSR agent source with the committed
+`vendor/parasoft-istanbul-lib-instrument-6.0.3-1.tgz` development dependency.
+For local development, install dependencies normally. The Jenkins static
+coverage pipeline replaces that archive with the nightly distribution version
+before installing dependencies without the lockfile.
 
 Production builds do not publish source maps or bundler source metadata. Only
 `dist/agent.js` is copied into the release ZIP, alongside `agent.jsonc`,

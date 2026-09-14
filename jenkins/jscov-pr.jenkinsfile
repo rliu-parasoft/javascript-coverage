@@ -4,6 +4,12 @@ pipeline {
     environment {
         BITBUCKET_API = 'https://code.parasoftcn.com/rest/api/latest/projects/JSC/repos/javascript-coverage'
         PR_FILE_PATH_RULES = 'jenkins/scripts/pr-path-rules.json'
+
+        DTP_CREDENTIALS = credentials('dtp.parasoftcn.com')
+        DTP_USER = "${DTP_CREDENTIALS_USR}"
+        DTP_PASSWORD = "${DTP_CREDENTIALS_PSW}"
+
+        CODEX_API_KEY = credentials('jscov-codex-api-key')
     }
 
     parameters {
@@ -19,17 +25,12 @@ pipeline {
         )
 
         string(
-            name: 'DTP_USER',
-            defaultValue: 'admin',
-            description: 'DTP username'
-        )
-
-        password(
-            name: 'DTP_PASSWORD',
-            defaultValue: 'tHBISrPrxc83P8Bp5reosw==',
-            description: 'DTP password'
+            name: 'CODEX_MODEL',
+            defaultValue: 'gpt-5.6-luna',
+            description: 'Model used by Codex CLI for Java static-analysis fixes'
         )
     }
+
 
     stages {
         stage('Check Branch Type') {
@@ -83,6 +84,11 @@ pipeline {
                         env."${key}" = values[i]
                         echo "${key}=${env."${key}"}"
                     }
+
+                    env.SKIP_AUTO_FIX = fileExists('artifacts/skip_auto_fix.txt')
+                        ? readFile('artifacts/skip_auto_fix.txt').trim()
+                        : 'false'
+                    echo "SKIP_AUTO_FIX=${env.SKIP_AUTO_FIX}"
                 }
             }
         }
@@ -92,21 +98,57 @@ pipeline {
                 expression { env.PR_BUILD_RESULT != 'SKIPPED' && env.NEED_JAVA_SA == 'true' }
             }
             steps {
+                script {
+                    env.JAVA_SA_INITIAL_SUCCEEDED = 'false'
+                }
                 catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
                     sh 'bash jenkins/scripts/run-java-static-analysis.sh'
+                    script {
+                        env.JAVA_SA_INITIAL_SUCCEEDED = 'true'
+                    }
                 }
-                recordIssues(
-                    enabledForFailure: true,
-                    tools: [
-                        parasoftFindings(
-                            id: 'jtest-static-analysis',
-                            name: 'Jtest Static Analysis',
-                            pattern: 'artifacts/reports/static-analysis/java/report.xml',
-                            localSettingsPath: 'jenkins/scripts/jtest.properties'
-                        )
-                    ],
-                    qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]]
-                )
+            }
+        }
+
+        stage('Auto-fix Static Analysis (Java)') {
+            when {
+                expression { env.PR_BUILD_RESULT != 'SKIPPED' && env.NEED_JAVA_SA == 'true' && env.JAVA_SA_INITIAL_SUCCEEDED == 'true' }
+            }
+            steps {
+                script {
+                    if (env.SKIP_AUTO_FIX == 'true') {
+                        // Tip commit is the bot's own auto-fix commit; skip another fix/push round and use the fresh post-fix violation count already recorded in status/all.env to decide NEEDS_WORK.
+                        def statusLines = fileExists('artifacts/status/all.env') ? readFile('artifacts/status/all.env').readLines() : []
+                        def violationsLine = statusLines.find { it.startsWith('JAVA_SA_VIOLATIONS=') }
+                        def violations = violationsLine ? violationsLine.split('=', 2)[1].trim() : '0'
+                        echo "Auto-fix skipped this round; ${violations} violation(s) remain after the previous auto-fix."
+                        if (violations.isInteger() && (violations as int) > 0) {
+                            unstable("Java static-analysis: ${violations} violation(s) remain after auto-fix.")
+                        }
+                    } else {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                            withCredentials([
+                                gitUsernamePassword(credentialsId: 'jscov-bitbucket-pr-bot', gitToolName: 'git')
+                            ]) {
+                                sh 'BASELINE_REPORT=artifacts/reports/static-analysis/java/report.xml JTEST_SETTINGS=jenkins/scripts/jtest.properties bash jenkins/scripts/run-java-static-fix.sh'
+                            }
+                        }
+                    }
+                }
+
+                script {
+                    recordIssues(
+                        enabledForFailure: true,
+                        tools: [
+                            parasoftFindings(
+                                id: 'jtest-static-analysis',
+                                name: 'Jtest Static Analysis',
+                                pattern: 'artifacts/reports/static-analysis/java/report.xml',
+                                localSettingsPath: 'jenkins/scripts/jtest.properties'
+                            )
+                        ]
+                    )
+                }
             }
         }
 

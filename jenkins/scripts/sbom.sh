@@ -12,6 +12,7 @@ set -e
 #
 # Optional environment variables (forwarded to sbom_process.sh):
 #   UPLOAD_TO_DTRACK - Set to "false" to skip the dtrack upload.
+#   GENERATE_WIKI    - Set to "false" to skip wiki generation.
 #   PROFILE          - Maven profile passed to sbom-maven-plugin.
 
 SCRIPT_DIR="jenkins/scripts"

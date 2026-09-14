@@ -60,6 +60,7 @@ lombok.config
 !/.agents/skills/regression-jscov-agent
 !/.agents/skills/code-review
 !/.agents/skills/bitbucket-pr-comment-review
+!/.agents/skills/syncing-docs-from-commits
 /.agent
 /.windsurf
 /.claude

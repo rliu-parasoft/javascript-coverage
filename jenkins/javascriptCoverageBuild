@@ -94,6 +94,31 @@ pipeline {
             }
         }
 
+        stage('Generate SBOM') {
+            steps {
+                script {
+                    // Always generate the merged SBOM json. The dtrack upload and
+                    // wiki generation are restricted to non-Chengdu builds.
+                    def sbomEnv = params.IS_CHENGDU ? ['UPLOAD_TO_DTRACK=false', 'GENERATE_WIKI=false'] : ['UPLOAD_TO_DTRACK=true', 'GENERATE_WIKI=true']
+                    withEnv(sbomEnv) {
+                        sh '''\
+                            #!/usr/bin/env bash
+                            set -euo pipefail
+
+                            # Generate a single merged SBOM for the distribution using the
+                            # reusable scripts extracted by sbom.sh into the top-level us/
+                            # directory. The entry point runs three steps in order:
+                            #   1. sbom_scan_java.sh : Java SBOM from parasoft-jscov.jar
+                            #   2. sbom_scan_js.sh   : JS SBOM from each integration module
+                            #   3. sbom_process.sh   : merge + dedup + fix + validate + upload + wiki
+
+                            ./jenkins/scripts/sbom.sh
+                            '''.stripIndent()
+                    }
+                }
+            }
+        }
+
         stage('Upload') {
             when {
                 expression {
@@ -150,7 +175,24 @@ pipeline {
                             exit $exitValue
                             '''.stripIndent()
                     } else {
-                        echo 'IS_CHENGDU is false; upload is skipped. TODO.'
+                        sh '''\
+                            #!/usr/bin/env bash
+                            set -euo pipefail
+                            set +x
+
+                            command -v curl >/dev/null 2>&1 || { echo "ERROR: curl is required to publish artifacts."; exit 1; }
+                            command -v tar >/dev/null 2>&1 || { echo "ERROR: tar is required to publish artifacts."; exit 1; }
+                            command -v ssh >/dev/null 2>&1 || { echo "ERROR: ssh is required to publish artifacts."; exit 1; }
+                            command -v git >/dev/null 2>&1 || { echo "ERROR: git is required to publish artifacts."; exit 1; }
+
+                            # The script takes this as the BUILD_ID
+                            export BUILD_TAG="jsc.$(date +%Y-%m-%d)"
+                            export PROJECT_BUILD_DIR="javascript-coverage/${BranchToBuild}"
+
+                            # Upload build to sponge
+                            git archive --remote ssh://git@trove.parasoft.com:7999/help/fileserver-scripts.git master fileserver-scripts | tar x
+                            ./fileserver-scripts/team-parasoft-findings/upload-build-to-sponge.sh 2>&1 | tee upload.log
+                            '''.stripIndent()
                     }
                 }
             }
@@ -159,7 +201,21 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: "${params.FILES_TO_UPLOAD},*.log", allowEmptyArchive: true
+            script {
+                def artifactPatterns = ['*.log']
+                def configuredArtifacts = (params.FILES_TO_UPLOAD ?: '').trim()
+
+                if (configuredArtifacts) {
+                    artifactPatterns << configuredArtifacts
+                }
+
+                artifactPatterns << 'javascript-coverage-sbom.json'
+                if (!params.IS_CHENGDU) {
+                    artifactPatterns << 'javascript-coverage.wiki'
+                }
+
+                archiveArtifacts artifacts: artifactPatterns.join(','), allowEmptyArchive: true
+            }
         }
 
         failure {

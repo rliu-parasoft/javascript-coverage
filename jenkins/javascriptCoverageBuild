@@ -2,6 +2,7 @@
  * Configure these parameters in the Jenkins job UI:
  *
  * AGENT_LABEL: String
+ * MAVEN_TOOL: String (Maven installation name or ID from Global Tool Configuration)
  * FILES_TO_UPLOAD: String
  * PUBLISH_TO_REPO: Boolean
  * IS_CHENGDU: Boolean
@@ -45,6 +46,10 @@ def extractFailureReason(String logPath) {
 pipeline {
     agent { label params.AGENT_LABEL }
 
+    tools {
+        maven params.MAVEN_TOOL
+    }
+
     options {
         timestamps()
         skipDefaultCheckout(true)
@@ -58,6 +63,7 @@ pipeline {
                     set -e
                     command -v bash >/dev/null 2>&1 || { echo "ERROR: bash is required on this Jenkins agent."; exit 1; }
                     command -v java >/dev/null 2>&1 || { echo "ERROR: java is required on this Jenkins agent."; exit 1; }
+                    command -v mvn >/dev/null 2>&1 || { echo "ERROR: Maven is required on this Jenkins agent."; exit 1; }
                     '''.stripIndent()
             }
         }

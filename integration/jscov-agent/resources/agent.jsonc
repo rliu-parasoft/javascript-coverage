@@ -9,6 +9,6 @@
     "jscov.agent.restServerPort": 8050,
     // Enables/disables verbose output to log file
     "jscov.agent.debug": false,
-    //  Turns off agent introduction printed out to console
+    // Enables/disables printing of the agent introduction and info-level messages to the console
     "jscov.agent.silentMode": false
 }

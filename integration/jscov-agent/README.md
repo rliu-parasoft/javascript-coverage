@@ -278,7 +278,7 @@ Point `--jscov.agent.settings` to a JSONC file. Comments and trailing commas are
     "jscov.agent.restServerPort": 8050,
     // Enables/disables verbose output to log file
     "jscov.agent.debug": false,
-    // Turns off agent introduction printed out to console
+    // Enables/disables printing of the agent introduction and info-level messages to the console
     "jscov.agent.silentMode": false
 }
 ```
@@ -293,7 +293,7 @@ Point `--jscov.agent.settings` to a JSONC file. Comments and trailing commas are
 | `jscov.agent.restServerEnabled` | boolean | `true` | Enable the REST server for remote session access. |
 | `jscov.agent.restServerPort` | number | `8050` | Port for the agent REST server. |
 | `jscov.agent.debug` | boolean | `false` | Enable verbose debug output to the log file. |
-| `jscov.agent.silentMode` | boolean | `false` | Suppress the agent banner printed to the console. |
+| `jscov.agent.silentMode` | boolean | `false` | Suppress the agent introduction and info-level console output; only errors are printed to the console. |
 
 ### Precedence
 

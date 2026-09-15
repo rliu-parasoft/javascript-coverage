@@ -396,7 +396,7 @@ The agent accepts parameters via command-line arguments and an optional JSONC se
 | `jscov.agent.restServerEnabled` | `true` | Enable the REST server for remote session access. |
 | `jscov.agent.restServerPort` | `8050` | Port for the agent REST server. |
 | `jscov.agent.debug` | `false` | Enable verbose debug output to the log file. |
-| `jscov.agent.silentMode` | `false` | Suppress the agent banner printed to the console. |
+| `jscov.agent.silentMode` | `false` | Suppress the agent introduction and info-level console output. |
 
 ### 3. Manage sessions over REST
 

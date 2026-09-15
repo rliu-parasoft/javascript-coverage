@@ -54,10 +54,16 @@ JS_MODULES=(
 "${SHARED_DIR}/sbom_scan_java.sh"
 
 # Step 2: JS SBOM per module -> <module>/${SBOM_FILENAME}-js.json
+# cyclonedx-npm needs SBOM evidence (a lock file and node_modules). Not every
+# module produces these during the dist build: parasoft-istanbul-lib-instrument
+# only runs `npm pack` (no dependency install) and pins package-lock=false in its
+# .npmrc. Run an install here that forces a lock file so every module has the
+# evidence cyclonedx-npm requires, regardless of its build path.
 JS_SBOM_FILES=()
 for module in "${JS_MODULES[@]}"; do
     (
         cd "${module}"
+        npm install --package-lock=true
         "${SHARED_DIR}/sbom_scan_js.sh"
     )
     JS_SBOM_FILES+=("${module}/${SBOM_FILENAME}-js.json")

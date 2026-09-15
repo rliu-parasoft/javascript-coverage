@@ -30,6 +30,8 @@ git archive --remote="${SHARED_REPOSITORY_URL}" master us | tar -x
 export PROJECT_NAME="JavaScript Coverage and TIA"
 export SBOM_FILENAME="javascript-coverage-sbom"
 export USE_SBOM_UPDATER=true
+# Forward the Chengdu switch so sbom_process.sh can select the right repository.
+export IS_CHENGDU
 # Directory that may hold sbom-injection.xml / sbom-injection-extra.json for
 # manual SBOM fixups. This is project-specific, so keep it next to this script.
 export MAPPING_DIR="${SCRIPT_DIR}"

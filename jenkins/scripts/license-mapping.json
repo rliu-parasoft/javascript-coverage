@@ -1,0 +1,196 @@
+[
+    {
+        "purl": "pkg:npm/jsonstream@1.3.5",
+        "licenses": [
+            {
+                "license": {
+                    "id": "MIT",
+                    "url": "http://www.opensource.org/licenses/mit-license.php"
+                }
+            },
+            {
+                "license": {
+                    "id": "Apache-2.0",
+                    "url": ""
+                }
+            }
+        ]
+    },
+    {
+        "purl" : "pkg:npm/argparse@2.0.1",
+        "licenses" : [
+            {
+                "license" : {
+                    "id" : "Python-2.0",
+                    "url" : ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/atob@2.1.2",
+        "licenses": [
+            {
+                "license": {
+                    "id": "MIT",
+                    "url": "http://www.opensource.org/licenses/mit-license.php"
+                }
+            },
+            {
+                "license": {
+                    "id": "Apache-2.0",
+                    "url": ""
+                }
+            }
+        ]
+    },
+    {
+        "purl" : "pkg:npm/caniuse-lite@1.0.30001809",
+        "licenses" : [
+            {
+                "license" : {
+                    "id" : "CC-BY-4.0",
+                    "url" : ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/caniuse-lite@1.0.30001810",
+        "licenses": [
+            {
+                "license": {
+                    "id" : "CC-BY-4.0",
+                    "url" : ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/glob@13.0.6",
+        "licenses": [
+            {
+                "license": {
+                    "id": "BlueOak-1.0.0",
+                    "url": ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/lightningcss-win32-x64-msvc@1.33.0",
+        "licenses": [
+            {
+                "license": {
+                    "id": "MPL-2.0",
+                    "url": ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/lightningcss@1.33.0",
+        "licenses": [
+            {
+                "license": {
+                    "id": "MPL-2.0",
+                    "url": ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/lru-cache@11.5.2",
+        "licenses": [
+            {
+                "license": {
+                    "id": "MPL-2.0",
+                    "url": ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/minipass@7.1.3",
+        "licenses": [
+            {
+                "license": {
+                    "id": "BlueOak-1.0.0",
+                    "url": ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/package-json-from-dist@1.0.1",
+        "licenses": [
+            {
+                "license": {
+                    "id": "BlueOak-1.0.0",
+                    "url": ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/path-scurry@2.0.2",
+        "licenses": [
+            {
+                "license": {
+                    "id": "BlueOak-1.0.0",
+                    "url": ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/rimraf@6.1.3",
+        "licenses": [
+            {
+                "license": {
+                    "id": "BlueOak-1.0.0",
+                    "url": ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/spdx-exceptions@2.5.0",
+        "licenses": [
+            {
+                "license": {
+                    "id": "CC-BY-3.0",
+                    "url": ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/spdx-license-ids@3.0.23",
+        "licenses": [
+            {
+                "license": {
+                    "id": "CC0-1.0",
+                    "url": ""
+                }
+            }
+        ]
+    },
+    {
+        "purl": "pkg:npm/type-fest@0.8.1",
+        "licenses": [
+            {
+                "license": {
+                    "id": "MIT",
+                    "url": "http://www.opensource.org/licenses/mit-license.php"
+                }
+            },
+            {
+                "license": {
+                    "id": "CC0-1.0",
+                    "url": ""
+                }
+            }
+        ]
+    }
+]

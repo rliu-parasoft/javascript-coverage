@@ -1,0 +1,38 @@
+<components>
+    <!-- isorelax -->
+    <component>
+        <virtualPath>.*com\.sun\.xml\.bind\.jaxb:isorelax</virtualPath>
+        <externalReferences>
+            <reference type="other">
+                <url>https://central.sonatype.com/artifact/com.sun.xml.bind.jaxb/isorelax/20090621</url>
+            </reference>
+        </externalReferences>
+    </component>
+    <!-- xsdlib -->
+    <component>
+        <virtualPath>.*net\.java\.dev\.msv:xsdlib</virtualPath>
+        <externalReferences>
+            <reference type="other">
+                <url>https://central.sonatype.com/artifact/net.java.dev.msv/xsdlib/2013.6.1</url>
+            </reference>
+        </externalReferences>
+    </component>
+    <!-- stax2-api -->
+    <component>
+        <virtualPath>.*org\.codehaus\.woodstox:stax2\-api</virtualPath>
+        <externalReferences>
+            <reference type="other">
+                <url>https://central.sonatype.com/artifact/org.codehaus.woodstox/stax2-api/4.2.1</url>
+            </reference>
+        </externalReferences>
+    </component>
+    <!-- jfreechart -->
+    <component>
+        <virtualPath>.*org\.jfree:jfreechart</virtualPath>
+        <externalReferences>
+            <reference type="other">
+                <url>https://central.sonatype.com/artifact/org.jfree/jfreechart/1.5.6</url>
+            </reference>
+        </externalReferences>
+    </component>
+</components>

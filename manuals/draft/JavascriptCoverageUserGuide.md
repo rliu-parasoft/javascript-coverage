@@ -369,3 +369,40 @@ techsupport.archive.location=C:\\parasoft\\temp
 #### 7.4 Coverage report structure
 
 - Executable code that is not inside a method is reported in the `<global>` block.
+
+## Runtime Coverage
+
+This section describes collecting *runtime execution* coverage from a running Node.js application under test (AUT), which is separate from the static coverage workflow above.
+
+### 1. Preload the agent
+
+Preload the agent alongside the AUT entry point, supplying a runtime data directory:
+
+```powershell
+node --import .\agent.js aut-server.js --jscov.agent.runtimeData .\runtime-data
+```
+
+On Windows, pass an absolute agent path as a `file:///` URL; a bare drive-letter path such as `E:\path\agent.js` is not valid for `--import`.
+
+### 2. Configure the agent
+
+The agent accepts parameters via command-line arguments and an optional JSONC settings file (`--jscov.agent.settings ./agent.jsonc`). Command-line values take precedence over settings-file values, which take precedence over built-in defaults.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `jscov.agent.runtimeData` | *(required)* | Directory where runtime coverage data is stored. |
+| `jscov.agent.settings` | — | Path to a JSONC settings file. CLI-only. |
+| `jscov.agent.session.autostart` | `true` | Automatically start a coverage collection session. |
+| `jscov.agent.restServerEnabled` | `true` | Enable the REST server for remote session access. |
+| `jscov.agent.restServerPort` | `8050` | Port for the agent REST server. |
+| `jscov.agent.debug` | `false` | Enable verbose debug output to the log file. |
+| `jscov.agent.silentMode` | `false` | Suppress the agent introduction and info-level console output. |
+
+### 3. Manage sessions over REST
+
+The agent's REST server listens on `http://127.0.0.1:<restServerPort>` (default port `8050`). Use `GET`/`POST /session/start` and `GET`/`POST /session/stop` to manage the current session, and `GET /coverage`, `GET /coverage/{id}`, `DELETE /coverage/{id}` to list, download, or delete coverage archives. See `integration/jscov-agent/openapi.yml` for the full request/response contract, status codes, and error bodies.
+
+### 4. Notes
+
+- With autostart enabled (the default), the agent creates the default-user session before the REST server begins listening.
+- Downloading a session archive requires `<runtimeData>/version.json` to exist.

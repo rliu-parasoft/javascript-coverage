@@ -43,6 +43,7 @@ lombok.config
 
 ### report
 /reports
+/artifacts/
 
 /.env.local
 

@@ -30,7 +30,7 @@ public final class JavascriptCoverage {
         try {
             JavascriptCoverage coverage = new JavascriptCoverage(args);
             coverage.run();
-        } catch (Throwable thr) { // parasoft-suppress OWASP2021.A5.NCE "This is intentionally designed to prevent exceptions from bubbling up and causing the program to terminate."
+        } catch (Throwable thr) { // parasoft-suppress OWASP2021.A5.NCE "The CLI must log any failure before exiting with a nonzero status."
             JavascriptCoverageLogger.getLogger().error(thr);
             System.exit(1);
         }

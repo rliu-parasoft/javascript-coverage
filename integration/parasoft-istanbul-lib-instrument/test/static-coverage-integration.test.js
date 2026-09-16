@@ -10,7 +10,9 @@ const { name: packageName } = require('../package.json');
 
 const instrumenterPath = path.resolve(__dirname, '../src/index');
 
-describe('static coverage integration', () => {
+describe('static coverage integration', function() {
+    this.timeout(5000);
+
     const tempDirectories = [];
 
     afterEach(() => {

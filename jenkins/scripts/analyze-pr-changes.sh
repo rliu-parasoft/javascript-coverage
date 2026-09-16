@@ -7,10 +7,10 @@
 #   ${ARTIFACTS_DIR}/changes.json                   - raw change list fetched from Bitbucket
 #   ${ARTIFACTS_DIR}/parsed-paths-from-changes.txt  - paths parsed from changes.json (one per line, for human inspection)
 #   ${ARTIFACTS_DIR}/steps.csv                      - CSV with a header row (csv_order names) and one data row (booleans)
-#   ${ARTIFACTS_DIR}/summary.md                     - Markdown summary used as the PR comment body
 #
-# This script does NOT post the PR comment; that is done by post-pr-summary.sh
-# in the Jenkins post stage.
+# This script does NOT write summary.md or post the PR comment; summary.md is
+# assembled by build-summary.sh, and posting is done by post-pr-summary.sh in
+# the Jenkins post stage.
 #
 # Required environment variables:
 #   BITBUCKET_API      - Bitbucket REST API prefix, e.g.
@@ -28,8 +28,18 @@ set -euo pipefail
 
 ARTIFACTS_DIR="${ARTIFACTS_DIR:-artifacts}"
 PR_FILE_PATH_RULES="${PR_FILE_PATH_RULES:-jenkins/scripts/pr-path-rules.json}"
+AUTO_FIX_COMMIT_MARKER="${AUTO_FIX_COMMIT_MARKER:-[jscov-auto-fix]}"
 
 mkdir -p "${ARTIFACTS_DIR}"
+
+# Loop-prevention guard: skip only Auto-fix (not Static Analysis) when the tip commit is the bot's own auto-fix commit, to avoid a fix/push loop.
+LAST_COMMIT_SUBJECT=$(git log -1 --pretty=%s 2>/dev/null || echo '')
+if [[ "${LAST_COMMIT_SUBJECT}" == "${AUTO_FIX_COMMIT_MARKER}"* ]]; then
+    echo "Tip commit (\"${LAST_COMMIT_SUBJECT}\") was produced by the auto-fix bot; skipping Auto-fix this round to avoid a fix/push loop (Static Analysis will still re-run to confirm the outcome)."
+    echo "true" > "${ARTIFACTS_DIR}/skip_auto_fix.txt"
+else
+    echo "false" > "${ARTIFACTS_DIR}/skip_auto_fix.txt"
+fi
 
 if [[ -z "${CHANGE_ID:-}" || "${CHANGE_ID:-}" == "null" ]]; then
     echo "This is not a pull-request build; no pre-analysis is required."
@@ -149,26 +159,6 @@ echo "steps.csv row    => ${CSV_ROW}"
 echo "-----------------------"
 echo
 
-# ---------------------------------------------------------------------------
-
-echo "---- adding content to summary ----"
-{
-    echo '# Analysis Summary'
-    echo
-    echo '| Step | Needed |'
-    echo '| --- | --- |'
-    # Build markdown rows straight from jq: zip csv_order with CSV_ROW into key/value pairs.
-    # Keeping the whole flow inside jq avoids paste/awk breaking rows on CRLF.
-    jq -r --arg csv "${CSV_ROW}" '
-        ($csv | split(",")) as $vals
-        | [ .csv_order, $vals ] | transpose
-        | .[] | "| \(.[0]) | \(.[1]) |"
-    ' "${PR_FILE_PATH_RULES}"
-} > "${ARTIFACTS_DIR}/summary.md"
-
-echo "summary.md written to ${ARTIFACTS_DIR}/summary.md"
-echo "-----------------------"
-echo
 
 
 

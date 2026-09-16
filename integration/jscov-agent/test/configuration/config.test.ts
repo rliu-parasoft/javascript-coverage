@@ -208,6 +208,26 @@ describe('configuration', () => {
         expect(parseCommandLine(['--jscov.agent.silentMode', '--target-option']).targetArgs).toEqual(['--target-option']);
     });
 
+    it('parses bare session and REST server options and consumes explicit boolean values', () => {
+        expect(parseCommandLine([
+            '--jscov.agent.session.autostart', '--jscov.agent.restServerEnabled', '--target-option'
+        ])).toEqual({
+            input: { sessionAutostart: true, restServerEnabled: true },
+            targetArgs: ['--target-option']
+        });
+        expect(parseCommandLine([
+            '--jscov.agent.session.autostart', 'false', '--jscov.agent.restServerEnabled', 'true', '--target-option'
+        ])).toEqual({
+            input: { sessionAutostart: 'false', restServerEnabled: 'true' },
+            targetArgs: ['--target-option']
+        });
+    });
+
+    it('reports missing runtime data in debug diagnostics', () => {
+        expect(resolveConfiguration([{ source: 'ARGS', input: { debug: true } }]).diagnostics).toHaveLength(2);
+        expect(resolveConfiguration([{ source: 'ARGS', input: { debug: true, runtimeData: ' ' } }]).diagnostics).toHaveLength(3);
+    });
+
     it('rejects invalid required paths and ignores invalid reusable input values', () => {
         expect(() => resolveArguments([])).toThrow(i18n.t('runtime_data_missing'));
         const root = mkdtempSync(join(tmpdir(), 'jscov-agent-config-'));
@@ -309,5 +329,32 @@ describe('configuration', () => {
         for (const port of ['Infinity', '-Infinity', 'NaN']) {
             expect(resolveInput({ runtimeData, restServerPort: port })).toMatchObject({ restServerPort: 8050 });
         }
+    });
+
+    it('uses the final value when an agent command-line option is repeated', () => {
+        expect(parseCommandLine([
+            '--jscov.agent.runtimeData', 'first-runtime-data',
+            '--jscov.agent.runtimeData', 'last-runtime-data'
+        ]).input).toEqual({ runtimeData: 'last-runtime-data' });
+    });
+
+    it('returns a string thrown while converting a settings value', () => {
+        const settings = {
+            toString() {
+                throw 'simulated settings conversion failure';
+            }
+        };
+
+        expect(readSettingsFile(settings)).toEqual({
+            input: {},
+            error: 'simulated settings conversion failure'
+        });
+    });
+
+    it('keeps a value option without a following value out of target arguments', () => {
+        expect(parseCommandLine(['--jscov.agent.runtimeData', '--target-option'])).toEqual({
+            input: { runtimeData: '' },
+            targetArgs: ['--target-option']
+        });
     });
 });

@@ -101,6 +101,22 @@ describe('remapRuntimeCoverage', () => {
         expect(remapped[generatedPath]).toBe(coverage[generatedPath]);
     });
 
+    it('preserves a file when its source map disappears during remapping', () => {
+        const file = fileCoverage(generatedPath, { version: 3, mappings: 'AAAA' });
+        let reads = 0;
+        Object.defineProperty(file, 'inputSourceMap', {
+            enumerable: true,
+            get: () => {
+                reads += 1;
+                return reads === 1 ? { version: 3, mappings: 'AAAA' } : undefined;
+            }
+        });
+
+        const remapped = remapRuntimeCoverage({ [generatedPath]: file });
+
+        expect(remapped[generatedPath]).toBe(file);
+    });
+
     it('accepts legal null columns in preserved coverage locations', () => {
         const coverage: RuntimeCoverage = {
             [generatedPath]: {

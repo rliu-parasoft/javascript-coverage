@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "test", "vite.config.ts"]
+  "include": ["src", "test", "types", "vite.config.ts", "vite-static-coverage-plugin.ts"]
 }

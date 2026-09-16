@@ -1,13 +1,16 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:http';
+import { EventEmitter } from 'node:events';
+import { createServer, Server } from 'node:http';
 import { tmpdir } from 'node:os';
+import { PassThrough } from 'node:stream';
 import { join, relative, sep } from 'node:path';
+import type { Request, Response } from 'express';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveConfiguration, type AgentConfig } from '../../src/configuration/config.js';
 import i18n from '../../src/i18n.js';
 import { LoggerProvider } from '../../src/logging/logger.js';
 import { RestServiceStartupError, startAgent, type StartedAgent } from '../../src/server/server.js';
-import { DEFAULT_USER_ID } from '../../src/session/session-service.js';
+import { CannotStopSessionInProgressError, DEFAULT_USER_ID, SessionService } from '../../src/session/session-service.js';
 
 describe('startAgent', () => {
     const agents: StartedAgent[] = [];
@@ -1136,5 +1139,275 @@ describe('startAgent', () => {
                 delete coverageGlobal.__coverage__;
             }
         }
+    });
+
+    it('serves the OpenAPI document as plain text', async () => {
+        const { baseUrl } = await startTestAgent();
+
+        const response = await fetch(`${baseUrl}/openapi.yml`);
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-type')).toContain('text/plain');
+        expect(await response.text()).toContain('openapi:');
+    });
+
+    it('maps an unreadable coverage listing to the internal-error contract', async () => {
+        vi.spyOn(SessionService.prototype, 'getLocalSessionNames').mockImplementation(() => {
+            throw 'simulated coverage read failure';
+        });
+        const { baseUrl } = await startTestAgent();
+
+        const response = await fetch(`${baseUrl}/coverage`);
+
+        expect(response.status).toBe(500);
+        expect(await response.json()).toEqual({
+            messageCode: 701,
+            message: `${i18n.t('coverage_read_failed')} simulated coverage read failure`
+        });
+    });
+
+    it('returns the stop-in-progress contract when a session is already stopping', async () => {
+        const sessionId = 'runtime_coverage_20260911_1200_0';
+        vi.spyOn(SessionService.prototype, 'stopSession').mockImplementation(() => {
+            throw new CannotStopSessionInProgressError(DEFAULT_USER_ID, sessionId);
+        });
+        const { baseUrl } = await startTestAgent();
+
+        const response = await fetch(`${baseUrl}/session/stop`, { method: 'POST' });
+
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({
+            messageCode: 200,
+            message: i18n.t('session_not_started', { userId: DEFAULT_USER_ID })
+        });
+    });
+
+    it('maps unexpected coverage-deletion failures to internal-error responses', async () => {
+        vi.spyOn(SessionService.prototype, 'deleteAllCoverageSessions').mockImplementation(() => {
+            throw new Error('simulated delete-all failure');
+        });
+        vi.spyOn(SessionService.prototype, 'deleteCoverageSession').mockImplementation(() => {
+            throw 'simulated delete failure';
+        });
+        const { baseUrl } = await startTestAgent();
+
+        const deleteAll = await fetch(`${baseUrl}/coverage`, { method: 'DELETE' });
+        const deleteOne = await fetch(`${baseUrl}/coverage/runtime_coverage_20260911_1200_0`, { method: 'DELETE' });
+
+        expect(deleteAll.status).toBe(500);
+        expect(await deleteAll.json()).toEqual({
+            messageCode: 701,
+            message: `${i18n.t('coverage_delete_all_failed', { userId: DEFAULT_USER_ID })} simulated delete-all failure`
+        });
+        expect(deleteOne.status).toBe(500);
+        expect(await deleteOne.json()).toEqual({
+            messageCode: 701,
+            message: `${i18n.t('coverage_delete_failed', {
+                session: 'runtime_coverage_20260911_1200_0', userId: DEFAULT_USER_ID
+            })} simulated delete failure`
+        });
+    });
+
+    it('wraps synchronous listen failures in the REST startup error contract', async () => {
+        vi.spyOn(Server.prototype, 'listen').mockImplementationOnce(() => {
+            throw new Error('simulated synchronous listen failure');
+        });
+
+        await expect(startTestAgent()).rejects.toMatchObject({
+            name: 'RestServiceStartupError',
+            message: i18n.t('agent_rest_service_start_failed', {
+                detail: 'simulated synchronous listen failure'
+            })
+        });
+    });
+
+    it('wraps a non-Error REST startup failure in the REST startup error contract', () => {
+        expect(new RestServiceStartupError(8050, 'simulated non-Error listen failure')).toMatchObject({
+            name: 'RestServiceStartupError',
+            message: i18n.t('agent_rest_service_start_failed', { detail: 'simulated non-Error listen failure' })
+        });
+    });
+
+    it('rejects agent closure when the server cannot close', async () => {
+        const { agent } = await startTestAgent();
+        vi.spyOn(Server.prototype, 'close').mockImplementationOnce(function (this: Server, callback) {
+            callback?.(new Error('simulated server close failure'));
+            return this;
+        });
+
+        await expect(agent.close()).rejects.toThrow('simulated server close failure');
+    });
+
+    it('uses placeholder server details when an access-log response has no socket', async () => {
+        type AccessLogMiddleware = (request: Request, response: Response, next: () => void) => void;
+        let accessLog: AccessLogMiddleware | undefined;
+        const app = {
+            use(middleware: AccessLogMiddleware) {
+                accessLog = middleware;
+            }
+        };
+        const consoleInfo = vi.fn();
+        const fakeServer = new EventEmitter() as EventEmitter & {
+            address(): { address: string; family: string; port: number };
+            listen(): Server;
+        };
+        fakeServer.address = () => ({ address: '0.0.0.0', family: 'IPv4', port: 8050 });
+        fakeServer.listen = () => {
+            fakeServer.emit('listening');
+            return fakeServer as unknown as Server;
+        };
+        vi.resetModules();
+        vi.doMock('express', () => ({ default: () => app }));
+        vi.doMock('node:http', async (importOriginal) => ({
+            ...await importOriginal<typeof import('node:http')>(),
+            createServer: () => fakeServer
+        }));
+        vi.doMock('../../src/logging/logger.js', () => ({
+            LoggerProvider: { file: { info: vi.fn() }, console: { info: consoleInfo } }
+        }));
+        vi.doMock('../../src/server/routes.js', () => ({ createRoutes: () => [] }));
+        try {
+            const { startAgent: startIsolatedAgent } = await import('../../src/server/server.js');
+            await startIsolatedAgent({
+                settings: undefined,
+                runtimeData: loggerRuntimeData,
+                sessionAutostart: false,
+                restServerEnabled: true,
+                restServerPort: 0,
+                debug: false,
+                silentMode: true
+            });
+            const response = Object.assign(new EventEmitter(), {
+                socket: undefined,
+                statusCode: 200,
+                getHeader: () => undefined
+            }) as unknown as Response;
+
+            accessLog?.({
+                originalUrl: '/status',
+                ip: '127.0.0.1',
+                socket: { remoteAddress: '127.0.0.1' },
+                method: 'GET',
+                path: '/status',
+                headers: {},
+                get: () => undefined
+            } as unknown as Request, response, () => undefined);
+            (response as unknown as EventEmitter).emit('finish');
+
+            expect(consoleInfo).toHaveBeenCalledWith(expect.stringContaining('\t-\t-\t-\tGET\t/status\t-\t200\t-\t0\t'));
+        } finally {
+            vi.doUnmock('express');
+            vi.doUnmock('node:http');
+            vi.doUnmock('../../src/logging/logger.js');
+            vi.doUnmock('../../src/server/routes.js');
+            vi.resetModules();
+        }
+    });
+
+    it('maps archive preparation failures to the internal-error contract', async () => {
+        vi.spyOn(SessionService.prototype, 'createSessionArchive').mockImplementation(() => {
+            throw 'simulated archive preparation failure';
+        });
+        const { baseUrl } = await startTestAgent();
+
+        const response = await fetch(`${baseUrl}/coverage/runtime_coverage_20260911_1200_0`);
+
+        expect(response.status).toBe(500);
+        expect(await response.json()).toEqual({
+            messageCode: 701,
+            message: `${i18n.t('coverage_read_failed')} simulated archive preparation failure`
+        });
+    });
+
+    it('returns an internal-error response when an archive stream fails before headers are sent', async () => {
+        const output = new PassThrough();
+        const errorSource = new EventEmitter();
+        vi.spyOn(SessionService.prototype, 'createSessionArchive').mockReturnValue({
+            filename: 'runtime_coverage_20260911_1200_0.zip',
+            output,
+            errorSource: errorSource as ReturnType<SessionService['createSessionArchive']>['errorSource']
+        });
+        const { baseUrl } = await startTestAgent();
+
+        const pendingResponse = fetch(`${baseUrl}/coverage/runtime_coverage_20260911_1200_0`);
+        await vi.waitFor(() => expect(errorSource.listenerCount('error')).toBe(1));
+        errorSource.emit('error', new Error('simulated archive stream failure'));
+        const response = await pendingResponse;
+
+        expect(response.status).toBe(500);
+        expect(response.headers.get('content-type')).toContain('application/json');
+        expect(await response.json()).toEqual({
+            messageCode: 701,
+            message: `${i18n.t('coverage_read_failed')} simulated archive stream failure`
+        });
+        expect(output.destroyed).toBe(true);
+    });
+
+    it('logs and destroys the response when an archive stream fails after headers are sent', async () => {
+        const output = new PassThrough();
+        const errorSource = new EventEmitter();
+        const streamError = new Error('simulated late archive stream failure');
+        vi.spyOn(SessionService.prototype, 'createSessionArchive').mockReturnValue({
+            filename: 'runtime_coverage_20260911_1200_0.zip',
+            output,
+            errorSource: errorSource as ReturnType<SessionService['createSessionArchive']>['errorSource']
+        });
+        const log = vi.spyOn(LoggerProvider.file, 'error');
+        const { baseUrl } = await startTestAgent();
+
+        const pendingResponse = fetch(`${baseUrl}/coverage/runtime_coverage_20260911_1200_0`);
+        await vi.waitFor(() => expect(errorSource.listenerCount('error')).toBe(1));
+        output.write('partial archive response');
+        const response = await pendingResponse;
+        expect(response.status).toBe(200);
+        errorSource.emit('error', streamError);
+
+        await vi.waitFor(() => expect(log).toHaveBeenCalledWith(i18n.t('coverage_read_failed'), streamError));
+        expect(output.destroyed).toBe(true);
+    });
+
+    it('ignores archive stream errors after a completed download', async () => {
+        const output = new PassThrough();
+        const errorSource = new EventEmitter();
+        vi.spyOn(SessionService.prototype, 'createSessionArchive').mockReturnValue({
+            filename: 'runtime_coverage_20260911_1200_0.zip',
+            output,
+            errorSource: errorSource as ReturnType<SessionService['createSessionArchive']>['errorSource']
+        });
+        const log = vi.spyOn(LoggerProvider.file, 'error');
+        const { baseUrl } = await startTestAgent();
+
+        const pendingResponse = fetch(`${baseUrl}/coverage/runtime_coverage_20260911_1200_0`);
+        await vi.waitFor(() => expect(errorSource.listenerCount('error')).toBe(1));
+        output.end('completed archive response');
+        const response = await pendingResponse;
+        expect(await response.text()).toBe('completed archive response');
+        log.mockClear();
+        errorSource.emit('error', new Error('late archive stream failure'));
+
+        expect(log).not.toHaveBeenCalled();
+    });
+
+    it('releases an archive stream once when the client closes a partial download', async () => {
+        const output = new PassThrough();
+        const errorSource = new EventEmitter();
+        vi.spyOn(SessionService.prototype, 'createSessionArchive').mockReturnValue({
+            filename: 'runtime_coverage_20260911_1200_0.zip',
+            output,
+            errorSource: errorSource as ReturnType<SessionService['createSessionArchive']>['errorSource']
+        });
+        const { baseUrl } = await startTestAgent();
+        const controller = new AbortController();
+
+        const pendingResponse = fetch(`${baseUrl}/coverage/runtime_coverage_20260911_1200_0`, { signal: controller.signal });
+        await vi.waitFor(() => expect(errorSource.listenerCount('error')).toBe(1));
+        output.write('partial archive response');
+        const response = await pendingResponse;
+        expect(response.status).toBe(200);
+        controller.abort();
+        await vi.waitFor(() => expect(output.destroyed).toBe(true));
+        errorSource.emit('error', 'late archive stream failure');
+
+        expect(output.destroyed).toBe(true);
     });
 });

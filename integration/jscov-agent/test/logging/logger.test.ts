@@ -266,6 +266,75 @@ describe('LoggerProvider', () => {
         await expect(Promise.resolve().then(() => LoggerProvider.close())).resolves.toBeUndefined();
     });
 
+    it('uses no-op console methods when the console logger is unavailable', () => {
+        LoggerProvider.initialize(makeConfig(runtimeData, { silentMode: true }));
+        const provider = LoggerProvider as unknown as { instance: { consoleLogger: typeof LoggerProvider.console | undefined } };
+        const consoleLogger = provider.instance.consoleLogger;
+        provider.instance.consoleLogger = undefined;
+        try {
+            expect(() => {
+                LoggerProvider.console.debug('debug');
+                LoggerProvider.console.info('info');
+                LoggerProvider.console.warn('warn');
+                LoggerProvider.console.error('error');
+            }).not.toThrow();
+        } finally {
+            provider.instance.consoleLogger = consoleLogger;
+        }
+    });
+
+    it('propagates non-collision failures while reserving the agent log file', async () => {
+        vi.resetModules();
+        vi.doMock('node:fs', async (importOriginal) => ({
+            ...await importOriginal<typeof import('node:fs')>(),
+            openSync: () => { throw Object.assign(new Error('open denied'), { code: 'EACCES' }); }
+        }));
+        try {
+            const { LoggerProvider: isolatedProvider } = await import('../../src/logging/logger.js');
+            expect(() => isolatedProvider.initialize(makeConfig(runtimeData))).toThrow('open denied');
+        } finally {
+            vi.doUnmock('node:fs');
+            vi.resetModules();
+        }
+    });
+
+    it('settles logger closure when callbacks fire repeatedly or end throws', async () => {
+        const finishListeners: Array<() => void> = [];
+        const repeatedLogger = {
+            once(event: string, listener: () => void) {
+                if (event === 'finish') {
+                    finishListeners.push(listener);
+                }
+                return repeatedLogger;
+            },
+            removeListener() {
+                return repeatedLogger;
+            },
+            end() {
+                finishListeners.forEach((listener) => listener());
+                finishListeners.forEach((listener) => listener());
+            }
+        } as unknown as EventEmitter & { end(): void };
+        LoggerProvider.initialize(makeConfig(runtimeData, { silentMode: true }));
+        const provider = LoggerProvider as unknown as {
+            instance: { fileLogger: EventEmitter & { end(): void }; consoleLogger: undefined };
+        };
+        provider.instance.fileLogger = repeatedLogger;
+        provider.instance.consoleLogger = undefined;
+        await expect(LoggerProvider.close()).resolves.toBeUndefined();
+        expect(() => LoggerProvider.file).toThrow();
+
+        const throwingLogger = new EventEmitter() as EventEmitter & { end(): void };
+        throwingLogger.end = () => { throw new Error('simulated logger close failure'); };
+        LoggerProvider.initialize(makeConfig(runtimeData, { silentMode: true }));
+        const secondProvider = LoggerProvider as unknown as {
+            instance: { fileLogger: EventEmitter & { end(): void }; consoleLogger: undefined };
+        };
+        secondProvider.instance.fileLogger = throwingLogger;
+        secondProvider.instance.consoleLogger = undefined;
+        await expect(LoggerProvider.close()).resolves.toBeUndefined();
+    });
+
     it('uses a 24-hour timestamp in file output', async () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date(2026, 7, 14, 13, 5, 6));
@@ -290,5 +359,53 @@ describe('LoggerProvider', () => {
         expect(logFile).toMatch(/^agent-000001-\d{10}\.log$/);
         const newLog = readFileSync(join(runtimeData, logFile), 'utf8');
         expect(newLog).toMatch(/\[JSCOV-AGENT\]\[INFO].*new message/);
+    });
+
+    it('retries an exclusive log-file reservation after a collision', async () => {
+        vi.resetModules();
+        let collisionPending = true;
+        vi.doMock('node:fs', async (importOriginal) => {
+            const actual = await importOriginal<typeof import('node:fs')>();
+            return {
+                ...actual,
+                openSync: (...args: Parameters<typeof actual.openSync>) => {
+                    if (collisionPending) {
+                        collisionPending = false;
+                        throw Object.assign(new Error('already exists'), { code: 'EEXIST' });
+                    }
+                    return actual.openSync(...args);
+                }
+            };
+        });
+        try {
+            const { LoggerProvider: isolatedProvider } = await import('../../src/logging/logger.js');
+            isolatedProvider.initialize(makeConfig(runtimeData));
+            isolatedProvider.file.error('collision recovery');
+            await isolatedProvider.close();
+            expect(readdirSync(runtimeData).filter((file) => file.endsWith('.log'))).toHaveLength(1);
+        } finally {
+            vi.doUnmock('node:fs');
+            vi.resetModules();
+        }
+    });
+
+    it('retains a newer logger instance when an older close completes', async () => {
+        const delayedLogger = new EventEmitter() as EventEmitter & { end(): void };
+        delayedLogger.end = () => undefined;
+        LoggerProvider.initialize(makeConfig(runtimeData, { silentMode: true }));
+        const provider = LoggerProvider as unknown as {
+            instance: { fileLogger: EventEmitter & { end(): void }; consoleLogger: undefined } | undefined;
+        };
+        provider.instance!.fileLogger = delayedLogger;
+        provider.instance!.consoleLogger = undefined;
+
+        const firstClose = LoggerProvider.close();
+        expect(LoggerProvider.close()).toBe(firstClose);
+        provider.instance = undefined;
+        LoggerProvider.initialize(makeConfig(runtimeData, { silentMode: true }));
+        delayedLogger.emit('finish');
+        await firstClose;
+
+        expect(LoggerProvider.file).toMatchObject({ error: expect.any(Function) });
     });
 });

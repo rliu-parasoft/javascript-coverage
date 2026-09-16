@@ -1,6 +1,6 @@
 [
   {
-    "purl": "pkg:npm/jsonstream@1.3.5",
+    "purl": "pkg:npm/JSONStream@1.3.5",
     "licenses": [
       {
         "license": {

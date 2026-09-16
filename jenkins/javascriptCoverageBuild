@@ -209,6 +209,25 @@ pipeline {
     }
 
     post {
+        success {
+            script {
+                // Promote this successful build via the shared promoter job.
+                // Chengdu builds are excluded from promotion.
+                if (!params.IS_CHENGDU) {
+                    build job: 'promoter',
+                          parameters: [
+                              string(name: 'PROMOTE_PRODUCT', value: 'javascript-coverage'),
+                              string(name: 'PROMOTE_BRANCH', value: 'master'),
+                              string(name: 'PROMOTE_BUILD_NAME', value: 'latest_build'),
+                              booleanParam(name: 'PROMOTE_FLAG', value: true),
+                              string(name: 'TEAM_DIR', value: '')
+                          ],
+                          wait: false,
+                          propagate: false
+                }
+            }
+        }
+
         always {
             script {
                 def artifactPatterns = ['*.log']

@@ -1,0 +1,47 @@
+[
+    {
+        "purl" : "pkg:npm/body@5.1.0",
+        "externalReferences": [
+            {
+                "type": "other",
+                "url": "https://www.npmjs.com/package/body/v/5.1.0"
+            }
+        ]
+    },
+    {
+        "purl" : "pkg:npm/continuable-cache@0.3.1",
+        "externalReferences": [
+            {
+                "type": "other",
+                "url": "https://www.npmjs.com/package/continuable-cache/v/0.3.1"
+            }
+        ]
+    },
+    {
+        "purl" : "pkg:npm/error@7.2.1",
+        "externalReferences": [
+            {
+                "type": "other",
+                "url": "https://www.npmjs.com/package/error/v/7.2.1"
+            }
+        ]
+    },
+    {
+        "purl" : "pkg:npm/safe-json-parse@1.0.1",
+        "externalReferences": [
+            {
+                "type": "other",
+                "url": "https://www.npmjs.com/package/safe-json-parse/v/1.0.1"
+            }
+        ]
+    },
+    {
+        "purl" : "pkg:npm/x-is-string@0.1.0",
+        "externalReferences": [
+            {
+                "type": "other",
+                "url": "https://www.npmjs.com/package/x-is-string/v/0.1.0"
+            }
+        ]
+    }
+]

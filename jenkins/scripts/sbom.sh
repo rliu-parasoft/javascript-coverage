@@ -30,6 +30,8 @@ git archive --remote="${SHARED_REPOSITORY_URL}" master us | tar -x
 export PROJECT_NAME="JavaScript Coverage and TIA"
 export SBOM_FILENAME="javascript-coverage-sbom"
 export USE_SBOM_UPDATER=true
+# Forward the Chengdu switch so sbom_process.sh can select the right repository.
+export IS_CHENGDU
 # Directory that may hold sbom-injection.xml / sbom-injection-extra.json for
 # manual SBOM fixups. This is project-specific, so keep it next to this script.
 export MAPPING_DIR="${SCRIPT_DIR}"
@@ -54,16 +56,10 @@ JS_MODULES=(
 "${SHARED_DIR}/sbom_scan_java.sh"
 
 # Step 2: JS SBOM per module -> <module>/${SBOM_FILENAME}-js.json
-# cyclonedx-npm needs SBOM evidence (a lock file and node_modules). Not every
-# module produces these during the dist build: parasoft-istanbul-lib-instrument
-# only runs `npm pack` (no dependency install) and pins package-lock=false in its
-# .npmrc. Run an install here that forces a lock file so every module has the
-# evidence cyclonedx-npm requires, regardless of its build path.
 JS_SBOM_FILES=()
 for module in "${JS_MODULES[@]}"; do
     (
         cd "${module}"
-        npm install --package-lock=true
         "${SHARED_DIR}/sbom_scan_js.sh"
     )
     JS_SBOM_FILES+=("${module}/${SBOM_FILENAME}-js.json")

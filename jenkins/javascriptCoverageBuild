@@ -103,10 +103,10 @@ pipeline {
         stage('Generate SBOM') {
             steps {
                 script {
-                    // Always generate the merged SBOM json. The dtrack upload and
-                    // wiki generation are restricted to non-Chengdu builds.
-                    def sbomEnv = params.IS_CHENGDU ? ['IS_CHENGDU=true', 'UPLOAD_TO_DTRACK=false', 'GENERATE_WIKI=false'] : ['IS_CHENGDU=false', 'UPLOAD_TO_DTRACK=true', 'GENERATE_WIKI=true']
-                    withEnv(sbomEnv) {
+                    // Always generate the merged SBOM json. sbom.sh derives the
+                    // dtrack upload and wiki generation switches from IS_CHENGDU,
+                    // so only the Chengdu flag needs to be forwarded here.
+                    withEnv(["IS_CHENGDU=${params.IS_CHENGDU}"]) {
                         sh '''\
                             #!/usr/bin/env bash
                             set -euo pipefail

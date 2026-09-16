@@ -10,18 +10,23 @@ set -e
 #
 # Run this script from the repository root after `./gradlew clean dist`.
 #
-# Optional environment variables (forwarded to sbom_process.sh):
-#   UPLOAD_TO_DTRACK - Set to "false" to skip the dtrack upload.
-#   GENERATE_WIKI    - Set to "false" to skip wiki generation.
-#   PROFILE          - Maven profile passed to sbom-maven-plugin.
+# Optional environment variables:
+#   IS_CHENGDU - Set to "true" for Chengdu builds. Chengdu builds disable
+#                the dtrack upload and wiki generation. Non-Chengdu builds enable
+#                both.
+#   PROFILE    - Maven profile passed to sbom-maven-plugin.
 
-SCRIPT_DIR="jenkins/scripts"
 # Shared, non-project-specific SBOM scripts are extracted from the clean
 # Jenkins workspace's top-level us/ directory.
+# Chengdu builds only produce the merged SBOM json, while non-Chengdu builds also upload and generate the wiki.
 if [ "${IS_CHENGDU}" = "true" ]; then
     SHARED_REPOSITORY_URL="ssh://git@code.parasoftcn.com:7998/jjs/jenkins-scripts.git"
+    export UPLOAD_TO_DTRACK=false
+    export GENERATE_WIKI=false
 else
     SHARED_REPOSITORY_URL="ssh://git@trove.parasoft.com:7999/bach/code.parasoftcn.com--jjs--jenkins-scripts.git"
+    export UPLOAD_TO_DTRACK=true
+    export GENERATE_WIKI=true
 fi
 SHARED_DIR="$(pwd)/us"
 
@@ -34,7 +39,7 @@ export USE_SBOM_UPDATER=true
 export IS_CHENGDU
 # Directory that may hold sbom-injection.xml / sbom-injection-extra.json for
 # manual SBOM fixups. This is project-specific, so keep it next to this script.
-export MAPPING_DIR="${SCRIPT_DIR}"
+export MAPPING_DIR="jenkins/scripts"
 
 # Java: scan the runnable distribution jar (parasoft-jscov.jar), which contains
 # only the Java dependencies. Scanning the jar rather than the whole dist zip

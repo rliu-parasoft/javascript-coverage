@@ -206,6 +206,22 @@ pipeline {
                 }
             }
         }
+
+        stage('Trigger DTP') {
+            when {
+                expression {
+                    return !params.IS_CHENGDU
+                }
+            }
+            steps {
+                build job: 'dtrack_to_dtp_trigger',
+                      parameters: [
+                          string(name: 'MAIN_FLAG', value: 'javascript-coverage')
+                      ],
+                      wait: false,
+                      propagate: false
+            }
+        }
     }
 
     post {

@@ -192,5 +192,16 @@
         }
       }
     ]
+  },
+  {
+    "purl": "pkg:npm/spdx-license-ids@3.0.24",
+    "licenses": [
+      {
+        "license": {
+          "id": "CC0-1.0",
+          "url": "http://creativecommons.org/publicdomain/zero/1.0/"
+        }
+      }
+    ]
   }
 ]

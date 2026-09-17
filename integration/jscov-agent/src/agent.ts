@@ -6,9 +6,13 @@ import { RestServiceStartupError, SessionAutostartError, startAgent, type Starte
 import { DEFAULT_USER_ID } from './session/session-service.js';
 import { errorMessage } from './utils.js';
 
-const config = resolveAgentConfiguration();
-if (config) {
-    await startAgentWithLifecycle(config);
+await startPreloadedAgent();
+
+export async function startPreloadedAgent(): Promise<void> {
+    const config = resolveAgentConfiguration();
+    if (config) {
+        await startAgentWithLifecycle(config);
+    }
 }
 
 function resolveAgentConfiguration(): AgentConfig | undefined {

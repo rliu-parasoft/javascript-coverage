@@ -1,9 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { once } from 'node:events';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import packageInfo from '../package.json' with { type: 'json' };
 import i18n from '../src/i18n.js';
 import { DEFAULT_USER_ID } from '../src/session/session-service.js';
@@ -16,6 +16,10 @@ interface PreloadedApp {
 }
 
 type AgentArgsFactory = (isolatedRoot: string, runtimeData: string) => string[];
+
+type PreloadModule = typeof import('../src/agent.js') & {
+    startPreloadedAgent?: () => Promise<void>;
+};
 
 function spawnPreloadedApp(
     autFixture = 'aut-server.js',
@@ -125,6 +129,304 @@ async function waitForExit(closed: Promise<unknown[]>): Promise<number | null> {
 }
 
 describe('agent preload', () => {
+    it('runs the preload lifecycle in the Vitest process', async () => {
+        const runtimeData = mkdtempSync(join(tmpdir(), 'jscov-agent-parent-coverage-'));
+        const originalArguments = process.argv;
+        const originalSigtermListeners = process.listeners('SIGTERM');
+        const processExit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+        const standardError = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+        const unrelatedSigtermListener = vi.fn();
+
+        try {
+            process.argv = [process.execPath, 'agent.test.ts'];
+            vi.resetModules();
+            const preloadModule = await import('../src/agent.js') as PreloadModule;
+            standardError.mockRestore();
+
+            expect(preloadModule.startPreloadedAgent).toBeTypeOf('function');
+
+            process.once('SIGTERM', unrelatedSigtermListener);
+            const listenersBeforeAgentStartup = process.listeners('SIGTERM');
+            process.argv = [
+                process.execPath,
+                'agent.test.ts',
+                '--jscov.agent.runtimeData',
+                runtimeData,
+                '--jscov.agent.restServerEnabled=false',
+                '--jscov.agent.session.autostart=false',
+                '--jscov.agent.silentMode=true'
+            ];
+            await preloadModule.startPreloadedAgent?.();
+
+            expect(existsSync(join(runtimeData, 'version.json'))).toBe(true);
+            const agentShutdownHandlers = process.listeners('SIGTERM')
+                .filter((listener) => !listenersBeforeAgentStartup.includes(listener));
+            expect(agentShutdownHandlers).toHaveLength(1);
+            const [agentShutdownHandler] = agentShutdownHandlers;
+            agentShutdownHandler?.('SIGTERM');
+            await vi.waitFor(() => expect(processExit).toHaveBeenCalledWith(0));
+            expect(unrelatedSigtermListener).not.toHaveBeenCalled();
+        } finally {
+            standardError.mockRestore();
+            process.argv = originalArguments;
+            for (const listener of process.listeners('SIGTERM')) {
+                if (!originalSigtermListeners.includes(listener)) {
+                    process.off('SIGTERM', listener);
+                }
+            }
+            processExit.mockRestore();
+            rmSync(runtimeData, { recursive: true, force: true });
+        }
+    });
+
+    it('reports a settings resolution error before initializing the logger', async () => {
+        const runtimeData = mkdtempSync(join(tmpdir(), 'jscov-agent-settings-error-'));
+        const invalidSettingsPath = mkdtempSync(join(tmpdir(), 'jscov-agent-settings-dir-'));
+        const originalArguments = process.argv;
+        const standardError = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+        try {
+            process.argv = [
+                process.execPath,
+                'agent.test.ts',
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.settings', invalidSettingsPath
+            ];
+            vi.resetModules();
+            await import('../src/agent.js');
+
+            expect(standardError).toHaveBeenCalledWith(
+                `[JSCOV-AGENT][ERROR]: ${i18n.t('settings_must_be_file', { path: invalidSettingsPath })}\n`
+            );
+            expect(existsSync(join(runtimeData, 'version.json'))).toBe(false);
+        } finally {
+            standardError.mockRestore();
+            process.argv = originalArguments;
+            rmSync(runtimeData, { recursive: true, force: true });
+            rmSync(invalidSettingsPath, { recursive: true, force: true });
+        }
+    });
+
+    it('reports a configuration error to stderr when it occurs before the logger initializes', async () => {
+        const originalArguments = process.argv;
+        const standardError = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+        vi.doMock('../src/configuration/config.js', async (importOriginal) => {
+            const actual = await importOriginal<typeof import('../src/configuration/config.js')>();
+            return {
+                ...actual,
+                resolveConfiguration: () => {
+                    throw new Error('configuration-resolution-boom');
+                }
+            };
+        });
+
+        try {
+            process.argv = [process.execPath, 'agent.test.ts'];
+            vi.resetModules();
+            await import('../src/agent.js');
+
+            expect(standardError).toHaveBeenCalledWith('[JSCOV-AGENT][ERROR]: configuration-resolution-boom\n');
+        } finally {
+            standardError.mockRestore();
+            process.argv = originalArguments;
+            vi.doUnmock('../src/configuration/config.js');
+            vi.resetModules();
+        }
+    });
+
+    it('logs through the logger when writing the version file fails after initialization', async () => {
+        const runtimeData = mkdtempSync(join(tmpdir(), 'jscov-agent-version-failure-'));
+        mkdirSync(join(runtimeData, 'version.json'));
+        const originalArguments = process.argv;
+
+        try {
+            process.argv = [
+                process.execPath,
+                'agent.test.ts',
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.restServerEnabled=false',
+                '--jscov.agent.session.autostart=false'
+            ];
+            vi.resetModules();
+            await import('../src/agent.js');
+
+            const expectedMessage = i18n.t('agent_version_file_cannot_be_written', {
+                path: join(runtimeData, 'version.json')
+            });
+            const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-\d{6}-\d{10}\.log$/.test(file));
+            expect(logFile).toBeDefined();
+            const logContents = await waitForLogContent(join(runtimeData, logFile), expectedMessage);
+            expect(logContents).toContain(expectedMessage);
+        } finally {
+            process.argv = originalArguments;
+            rmSync(runtimeData, { recursive: true, force: true });
+        }
+    });
+
+    it('logs a REST service startup failure raised by the mocked server', async () => {
+        const runtimeData = mkdtempSync(join(tmpdir(), 'jscov-agent-rest-failure-'));
+        const originalArguments = process.argv;
+
+        vi.doMock('../src/server/server.js', async (importOriginal) => {
+            const actual = await importOriginal<typeof import('../src/server/server.js')>();
+            return {
+                ...actual,
+                startAgent: vi.fn().mockRejectedValue(new actual.RestServiceStartupError(1234, new Error('bad-port')))
+            };
+        });
+
+        try {
+            process.argv = [
+                process.execPath,
+                'agent.test.ts',
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.session.autostart=false'
+            ];
+            vi.resetModules();
+            await import('../src/agent.js');
+
+            const expectedMessage = i18n.t('agent_rest_service_start_failed', { detail: 'bad-port' });
+            const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-\d{6}-\d{10}\.log$/.test(file));
+            expect(logFile).toBeDefined();
+            const logContents = await waitForLogContent(join(runtimeData, logFile), expectedMessage);
+            expect(logContents).toContain(expectedMessage);
+        } finally {
+            process.argv = originalArguments;
+            rmSync(runtimeData, { recursive: true, force: true });
+            vi.doUnmock('../src/server/server.js');
+            vi.resetModules();
+        }
+    });
+
+    it('logs a session autostart failure raised by the mocked server', async () => {
+        const runtimeData = mkdtempSync(join(tmpdir(), 'jscov-agent-session-failure-'));
+        const originalArguments = process.argv;
+
+        vi.doMock('../src/server/server.js', async (importOriginal) => {
+            const actual = await importOriginal<typeof import('../src/server/server.js')>();
+            return {
+                ...actual,
+                startAgent: vi.fn().mockRejectedValue(new actual.SessionAutostartError(new Error('session-boom')))
+            };
+        });
+
+        try {
+            process.argv = [
+                process.execPath,
+                'agent.test.ts',
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.restServerEnabled=false'
+            ];
+            vi.resetModules();
+            await import('../src/agent.js');
+
+            const expectedMessage = i18n.t('session_start_failed', { userId: DEFAULT_USER_ID });
+            const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-\d{6}-\d{10}\.log$/.test(file));
+            expect(logFile).toBeDefined();
+            const logContents = await waitForLogContent(join(runtimeData, logFile), expectedMessage);
+            expect(logContents).toContain(expectedMessage);
+        } finally {
+            process.argv = originalArguments;
+            rmSync(runtimeData, { recursive: true, force: true });
+            vi.doUnmock('../src/server/server.js');
+            vi.resetModules();
+        }
+    });
+
+    it('logs a generic startup failure raised by the mocked server', async () => {
+        const runtimeData = mkdtempSync(join(tmpdir(), 'jscov-agent-generic-failure-'));
+        const originalArguments = process.argv;
+
+        vi.doMock('../src/server/server.js', async (importOriginal) => {
+            const actual = await importOriginal<typeof import('../src/server/server.js')>();
+            return {
+                ...actual,
+                startAgent: vi.fn().mockRejectedValue(new Error('generic-startup-boom'))
+            };
+        });
+
+        try {
+            process.argv = [
+                process.execPath,
+                'agent.test.ts',
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.restServerEnabled=false',
+                '--jscov.agent.session.autostart=false'
+            ];
+            vi.resetModules();
+            await import('../src/agent.js');
+
+            const expectedMessage = i18n.t('agent_startup_failed');
+            const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-\d{6}-\d{10}\.log$/.test(file));
+            expect(logFile).toBeDefined();
+            const logContents = await waitForLogContent(join(runtimeData, logFile), expectedMessage);
+            expect(logContents).toContain(expectedMessage);
+            expect(logContents).toContain('generic-startup-boom');
+        } finally {
+            process.argv = originalArguments;
+            rmSync(runtimeData, { recursive: true, force: true });
+            vi.doUnmock('../src/server/server.js');
+            vi.resetModules();
+        }
+    });
+
+    it('ignores a duplicate shutdown signal and logs a shutdown failure from a mocked agent', async () => {
+        const runtimeData = mkdtempSync(join(tmpdir(), 'jscov-agent-shutdown-failure-'));
+        const originalArguments = process.argv;
+        const originalSigtermListeners = process.listeners('SIGTERM');
+        const processExit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+        const close = vi.fn().mockRejectedValueOnce(new Error('close-boom'));
+
+        vi.doMock('../src/server/server.js', async (importOriginal) => {
+            const actual = await importOriginal<typeof import('../src/server/server.js')>();
+            return {
+                ...actual,
+                startAgent: vi.fn().mockResolvedValue({ port: 0, close })
+            };
+        });
+
+        try {
+            process.argv = [
+                process.execPath,
+                'agent.test.ts',
+                '--jscov.agent.runtimeData', runtimeData,
+                '--jscov.agent.restServerEnabled=false',
+                '--jscov.agent.session.autostart=false'
+            ];
+            vi.resetModules();
+            const listenersBeforeAgentStartup = process.listeners('SIGTERM');
+            await import('../src/agent.js');
+
+            const agentShutdownHandlers = process.listeners('SIGTERM')
+                .filter((listener) => !listenersBeforeAgentStartup.includes(listener));
+            expect(agentShutdownHandlers).toHaveLength(1);
+            const [agentShutdownHandler] = agentShutdownHandlers;
+            agentShutdownHandler?.('SIGTERM');
+            agentShutdownHandler?.('SIGTERM');
+
+            await vi.waitFor(() => expect(processExit).toHaveBeenCalledWith(0));
+            expect(close).toHaveBeenCalledTimes(1);
+            const expectedMessage = i18n.t('agent_shutdown_failed');
+            const [logFile] = readdirSync(runtimeData).filter((file) => /^agent-\d{6}-\d{10}\.log$/.test(file));
+            expect(logFile).toBeDefined();
+            const logContents = await waitForLogContent(join(runtimeData, logFile), expectedMessage);
+            expect(logContents).toContain(expectedMessage);
+            expect(logContents).toContain('close-boom');
+        } finally {
+            process.argv = originalArguments;
+            for (const listener of process.listeners('SIGTERM')) {
+                if (!originalSigtermListeners.includes(listener)) {
+                    process.off('SIGTERM', listener);
+                }
+            }
+            processExit.mockRestore();
+            rmSync(runtimeData, { recursive: true, force: true });
+            vi.doUnmock('../src/server/server.js');
+            vi.resetModules();
+        }
+    });
+
     it('preloads for the runtime command and exposes the autostarted session', async () => {
         const app = spawnPreloadedApp(
             'aut-server.js',

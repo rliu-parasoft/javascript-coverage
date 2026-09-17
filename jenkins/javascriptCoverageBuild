@@ -195,7 +195,6 @@ pipeline {
                             export GIT_COMMIT="$(git rev-parse HEAD)"
 
                             # The script takes this as the BUILD_ID
-                            export BUILD_TAG="jsc.$(date +%Y-%m-%d)"
                             export PROJECT_BUILD_DIR="javascript-coverage/${BranchToBuild}"
 
                             # Upload build to sponge

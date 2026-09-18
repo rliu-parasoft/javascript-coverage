@@ -128,7 +128,8 @@ pipeline {
 
                     def settingsBody = generated.trim() + '\n'
                     if (!params.IS_CHENGDU) {
-                        settingsBody += 'build.id=javascript-coverage.yyyy-MM-dd\n'
+                        def buildId = "javascript-coverage.${new Date().format('yyyy-MM-dd')}"
+                        settingsBody += "build.id=${buildId}\n"
                     }
 
                     writeFile file: settingsPath, text: settingsBody
@@ -223,7 +224,8 @@ pipeline {
                                 'parasoft.eula.accepted=true'
                             ]
                             if (!params.IS_CHENGDU) {
-                                settingsLines << 'build.id=javascript-coverage.yyyy-MM-dd'
+                                def buildId = "javascript-coverage.${new Date().format('yyyy-MM-dd')}"
+                                settingsLines << "build.id=${buildId}"
                             }
                             def settingsContent = settingsLines.join('\n') + '\n'
 

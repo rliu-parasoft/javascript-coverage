@@ -7,6 +7,7 @@
  * - DTP_CREDENTIAL_ID (Credentials, Username with password): DTP credential used to generate the coverage report and publish it when enabled.
  * - PUBLISH_REPORT_TO_DTP (Boolean): Whether to publish the static coverage XML report to DTP.
  * - NOTIFY_RECIPIENTS (String, optional): Comma-, whitespace-, or semicolon-separated failure-email recipients.
+ * - IS_CHENGDU (Boolean): When false, appends a `build.id` property to the settings file.
  *
  * Environment variables:
  * - JAVASCRIPT_COVERAGE_ARCHIVE_URL: URL of the JavaScript Coverage distribution ZIP.
@@ -49,10 +50,11 @@ def extractFailureReason(String logPath) {
     return 'unknown'
 }
 
-def createStaticCoverageReport(boolean publishReportToDtp) {
+def createStaticCoverageReport(boolean publishReportToDtp, String buildId) {
     withEnv([
         "PUBLISH_ARGUMENT=${publishReportToDtp ? '-publish' : ''}",
-        "PUBLISH_REPORT_TO_DTP=${publishReportToDtp}"
+        "PUBLISH_REPORT_TO_DTP=${publishReportToDtp}",
+        "BUILD_ID=${buildId ?: ''}"
     ]) {
         sh '''\
             #!/usr/bin/env bash
@@ -72,6 +74,10 @@ def createStaticCoverageReport(boolean publishReportToDtp) {
             report.dtp.publish=${PUBLISH_REPORT_TO_DTP:-false}
             console.verbosity.level=high
             EOF
+
+            if [ -n "${BUILD_ID:-}" ]; then
+                echo "build.id=${BUILD_ID}" >> "$settings_path"
+            fi
 
             mkdir -p reports/static-coverage
             java -jar artifacts/static-coverage-tools/parasoft-jscov.jar coverage \\
@@ -181,6 +187,7 @@ pipeline {
             steps {
                 script {
                     def publishReportToDtp = params.PUBLISH_REPORT_TO_DTP ?: false
+                    def buildId = params.IS_CHENGDU ? '' : "javascript-coverage.${new Date().format('yyyy-MM-dd')}"
 
                     withCredentials([
                         usernamePassword(
@@ -190,7 +197,7 @@ pipeline {
                         )
                     ]) {
                         // parasoft-jscov.jar requires DTP credentials even when DTP publication is disabled.
-                        createStaticCoverageReport(publishReportToDtp)
+                        createStaticCoverageReport(publishReportToDtp, buildId)
                     }
                 }
             }

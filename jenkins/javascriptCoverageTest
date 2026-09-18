@@ -13,6 +13,7 @@
  * PUBLISH_REPORT_TO_DTP: Boolean
  * BranchToBuild: String
  * NOTIFY_RECIPIENTS: String
+ * IS_CHENGDU: Boolean
  */
 
 def parseRecipientList(String rawRecipients) {
@@ -125,7 +126,12 @@ pipeline {
                         report.coverage.images=${dtpProject}
                         """.stripIndent()
 
-                    writeFile file: settingsPath, text: generated.trim() + '\n'
+                    def settingsBody = generated.trim() + '\n'
+                    if (!params.IS_CHENGDU) {
+                        settingsBody += 'build.id=javascript-coverage.yyyy-MM-dd\n'
+                    }
+
+                    writeFile file: settingsPath, text: settingsBody
 
                     if (!fileExists(settingsPath)) {
                         error("Failed to create settings file at: ${settingsPath}")
@@ -203,7 +209,7 @@ pipeline {
 
                     withEnv(mlpEnvironment) {
                         reports.each { report ->
-                            def settingsContent = [
+                            def settingsLines = [
                                 "dtp.url=${dtpUrl}",
                                 "dtp.user=${dtpUser}",
                                 "dtp.password=${dtpPassword}",
@@ -215,7 +221,11 @@ pipeline {
                                 'logging.scontrol.verbose=true',
                                 'scope.path.accept.wildcard=*.ts,*.tsx,*.js',
                                 'parasoft.eula.accepted=true'
-                            ].join('\n') + '\n'
+                            ]
+                            if (!params.IS_CHENGDU) {
+                                settingsLines << 'build.id=javascript-coverage.yyyy-MM-dd'
+                            }
+                            def settingsContent = settingsLines.join('\n') + '\n'
 
                             writeFile file: report.settingsFile, text: settingsContent
 
@@ -291,7 +301,7 @@ pipeline {
                     stopProcessingIfError: true
                 )]
             )
-            archiveArtifacts artifacts: '**/build/reports/**,**/reports/**,*.log', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'reports/static/**,reports/unit/**,integration/*/build/reports/**,integration/*/build/test-results/test/**,*.log', allowEmptyArchive: true
         }
 
         failure {

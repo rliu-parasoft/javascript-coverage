@@ -108,12 +108,19 @@ echo "-----------------------"
 echo
 
 # ---------------------------------------------------------------------------
-# Update PR status (NEEDS_WORK)
+# Update PR status
 # ---------------------------------------------------------------------------
 
 echo "---- checking Jenkins build result ----"
 if [[ "${PR_BUILD_RESULT}" == "SUCCESS" ]]; then
-    echo "Jenkins build succeeded; PR status remains unchanged."
+    echo "Jenkins build succeeded; setting pull request review status to UNAPPROVED..."
+    curl --fail --silent --show-error \
+        -u "${API_USERNAME}:${API_PASSWORD}" \
+        -H 'Content-Type: application/json' \
+        -X PUT \
+        --url "${BITBUCKET_API}/pull-requests/${CHANGE_ID}/participants/${API_USERNAME}" \
+        --data '{"status":"UNAPPROVED"}' >/dev/null
+    echo "Pull request review status updated to UNAPPROVED."
 else
     echo "Marking pull request #${CHANGE_ID} as NEEDS_WORK..."
     curl --fail --silent --show-error \

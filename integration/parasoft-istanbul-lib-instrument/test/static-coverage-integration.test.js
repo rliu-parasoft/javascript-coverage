@@ -137,7 +137,8 @@ describe('static coverage integration', function() {
     });
 
     it('captures the environment value when the visitor loads', function() {
-        this.timeout(5000);
+        // This test starts two Node processes and can exceed five seconds on Windows CI.
+        this.timeout(10000);
 
         const disabledDirectory = createTempDirectory();
         instrumentInChild(disabledDirectory, undefined, {

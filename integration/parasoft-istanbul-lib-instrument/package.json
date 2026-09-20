@@ -19,7 +19,7 @@
     "istanbul-lib-coverage": "^3.2.0",
     "istanbul-lib-source-maps": "~5.0.6",
     "semver": "^7.5.4",
-    "uuid": "^8.3.2"
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@babel/cli": "^7.23.9",
@@ -27,14 +27,12 @@
     "chai": "^4.2.0",
     "clone": "^2.1.2",
     "debug": "^4.1.1",
-    "documentation": "^12.1.4",
     "eslint": "^9.0.0",
     "eslint-formatter-checkstyle": "9.0.1",
     "globals": "^15.0.0",
-    "js-yaml": "^3.13.1",
-    "mocha": "^6.2.3",
+    "mocha": "^12.0.1",
     "nopt": "^4.0.1",
-    "nyc": "^15.1.0"
+    "nyc": "^18.0.0"
   },
   "license": "BSD-3-Clause",
   "keywords": [

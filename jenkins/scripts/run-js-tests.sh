@@ -19,6 +19,18 @@ fi
 
 mkdir -p "$artifacts_dir"
 
+# mocha's built-in "xunit" reporter (used by parasoft-istanbul-lib-instrument)
+# emits a non-standard `file="..."` attribute on <testcase> elements. The
+# Jenkins xunit plugin's JUnit parser validates against a strict JUnit XSD
+# that rejects this attribute (cvc-complex-type.3.2.2), so strip it before
+# the reports are archived/consumed.Mocha's newer xunit reporter adds a non-standard file attribute to <testcase> elements, which fails Jenkins' strict JUnit validation, so it must be stripped before archiving.
+sanitize_junit_reports() {
+    local dir="$1"
+    [[ -d "$dir" ]] || return 0
+    find "$dir" -type f -name '*.xml' -print0 \
+        | xargs -0 -r sed -i -E 's/(<testcase\b[^>]*) file="[^"]*"/\1/g'
+}
+
 # Collect test/coverage results from integration build outputs and archive to artifacts.
 collect_and_archive() {
     local rpt_dir="$1" out_dir="$2"
@@ -42,6 +54,8 @@ collect_and_archive() {
             cp "$coverage/clover.xml" "$rpt_dir/$module_name/coverage/"
         fi
     done
+
+    sanitize_junit_reports "$rpt_dir"
 
     cp -R "$rpt_dir"/. "$out_dir/" 2>/dev/null || true
 }

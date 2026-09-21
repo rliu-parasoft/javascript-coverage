@@ -249,11 +249,16 @@ pipeline {
         }
         stage('Unit Tests (JS)') {
             steps {
-                sh '''\
+                sh '''
                     #!/usr/bin/env bash
                     set -euo pipefail
+
                     ./gradlew :integration:test 2>&1 | tee integration-test.log
-                    '''.stripIndent()
+
+                    # Remove the file attribute emitted by Mocha's xunit reporter.
+                    find integration -type f -name '*.xml' -print0 \
+                        | xargs -0 -r sed -i -E 's/(<testcase\\b[^>]*) file="[^"]*"/\\1/g'
+                '''.stripIndent()
             }
         }
     }

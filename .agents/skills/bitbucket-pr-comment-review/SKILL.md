@@ -22,49 +22,48 @@ Read review comments on a Bitbucket pull request, verify technical validity agai
 
 ## Workflow
 1. Resolve the PR URL:
-    - If user supplied a URL, use it.
-    - If no URL was supplied:
-        - run `scripts/discover-pr-url.sh`
-        - the script detects current branch, parses `origin`, queries open PRs, and selects the matching source branch PR
-    - If zero matches: report that no open PR was found for the branch and ask for a URL.
-    - If multiple matches: list candidates and ask user which PR to review.
+   - If user supplied a URL, use it.
+   - If no URL was supplied:
+     - run `scripts/discover-pr-url.sh`
+     - the script detects current branch, parses `origin`, queries open PRs, and selects the matching source branch PR
+   - If zero matches: report that no open PR was found for the branch and ask for a URL.
+   - If multiple matches: list candidates and ask user which PR to review.
 2. Parse the resolved PR URL to extract `project`, `repo`, and `pull request id`.
 3. Fetch PR activities:
-    - run `scripts/fetch-pr-activities.sh "<pr-url>"` (or run without args to auto-discover URL first)
-    - underlying API call: `GET /rest/api/latest/projects/{project}/repos/{repo}/pull-requests/{id}/activities?limit=200`
+   - run `scripts/fetch-pr-activities.sh "<pr-url>"` (or run without args to auto-discover URL first)
+   - underlying API call: `GET /rest/api/latest/projects/{project}/repos/{repo}/pull-requests/{id}/activities?limit=200`
 4. Extract unresolved review comments only (ignore already resolved comments):
-    - run `scripts/fetch-pr-activities.sh "<pr-url>" | scripts/extract-unresolved-comments.sh`
-    - filter rule: include comments where `comment.state != "RESOLVED"` (treat missing state as open)
+   - run `scripts/fetch-pr-activities.sh "<pr-url>" | scripts/extract-unresolved-comments.sh`
+   - filter rule: treat `comment.threadResolved == true` as resolved, then include comments whose effective state is not `RESOLVED`
+   - effective state rule: use `comment.state` when present; if missing and `threadResolved == true`, treat as `RESOLVED`; otherwise treat as `OPEN`
 5. Group remaining review comments by:
-    - comment id
-    - author
-    - severity language (if present)
-    - technical claim
+   - comment id
+   - author
+   - severity language (if present)
+   - technical claim
 6. For each claim, inspect the referenced code paths and nearby tests before deciding.
 7. Classify each comment:
-    - `valid`
-    - `partially valid`
-    - `not supported by code evidence`
+   - `valid`
+   - `partially valid`
+   - `not supported by code evidence`
 8. Provide a concise recommendation for each:
-    - accept and patch
-    - accept with constraints
-    - reject with rationale
+   - accept and patch
+   - accept with constraints
+   - reject with rationale
 9. If changes are requested or clearly needed:
-    - implement minimal, targeted edits
-    - add or adjust tests
-    - run focused tests
+   - implement minimal, targeted edits
+   - add or adjust tests
+   - run focused tests
 10. Report outcome with file-level evidence.
 
 ## Output format
 Use this exact structure:
 
 ### PR comment assessment
-- Comment: [<comment id>](<pr-url>/overview?commentId=<comment id>): <short quote or summary>
+- Comment: <comment id>: <short quote or summary>
 - Verdict: <valid | partially valid | not supported>
 - Evidence: <file paths and key behavior>
 - Recommendation: <accept/reject/partial and why>
-
-Link target: build the URL from the resolved PR URL (step 1) as `<pr-url>/overview?commentId=<comment id>`; this opens the comment directly in Bitbucket.
 
 ### Proposed changes
 - <bullets of concrete code/test updates, or "none">
@@ -75,13 +74,15 @@ Link target: build the URL from the resolved PR URL (step 1) as `<pr-url>/overvi
 
 ## Command guidance
 - Prefer reproducible scripts in `scripts/` over ad-hoc one-liners:
-    - `scripts/discover-pr-url.sh [branch]`
-    - `scripts/fetch-pr-activities.sh [pr-url]`
-    - `scripts/extract-unresolved-comments.sh [activities-json-file]`
+  - `scripts/discover-pr-url.sh [branch]`
+  - `scripts/fetch-pr-activities.sh [pr-url]`
+  - `scripts/extract-unresolved-comments.sh [activities-json-file]`
 - Script behavior:
-    - `discover-pr-url.sh` exits non-zero for zero or multiple branch matches and prints diagnostics.
-    - `fetch-pr-activities.sh` accepts optional `BITBUCKET_ACTIVITY_LIMIT` (default `200`).
-    - `extract-unresolved-comments.sh` removes comments with `comment.state == "RESOLVED"` and outputs structured unresolved comments.
+  - `discover-pr-url.sh` exits non-zero for zero or multiple branch matches and prints diagnostics.
+  - `fetch-pr-activities.sh` accepts optional `BITBUCKET_ACTIVITY_LIMIT` (default `200`).
+  - `extract-unresolved-comments.sh` removes comments that are effectively resolved (`state == "RESOLVED"` or `threadResolved == true` when `state` is missing) and outputs structured unresolved comments.
+  - `reply-pr-comment.sh` accepts `--text`/`--text-file` as optional; provide either to add a reply, or omit both and pass `--resolve` for resolve-only operation.
+  - `reply-pr-comment.sh --resolve` sets `state: "RESOLVED"` and `threadResolved: true`, then verifies the parent thread remains effectively resolved via a follow-up GET.
 - The scripts rely on `git`, `curl`, `jq`, and `base64`.
 - Use repository-local evidence first (source + tests), not assumptions.
 - If auth fails, ask the user to export missing env vars and retry.

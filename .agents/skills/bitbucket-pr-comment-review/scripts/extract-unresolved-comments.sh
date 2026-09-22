@@ -12,11 +12,23 @@ if [[ -n "$input" ]]; then
     [
       .values[]
       | select(.comment != null)
-      | select((.comment.state // "OPEN") != "RESOLVED")
+      | select(
+          (
+            if (.comment.state != null) then .comment.state
+            elif ((.comment.threadResolved // false) == true) then "RESOLVED"
+            else "OPEN"
+            end
+          ) != "RESOLVED"
+        )
       | {
           comment_id: .comment.id,
           parent_comment_id: (.comment.parent.id // null),
-          state: (.comment.state // "OPEN"),
+          state: (
+            if (.comment.state != null) then .comment.state
+            elif ((.comment.threadResolved // false) == true) then "RESOLVED"
+            else "OPEN"
+            end
+          ),
           author: (.comment.author.displayName // .comment.author.name // "unknown"),
           severity: (.comment.severity // null),
           path: (.comment.anchor.path // null),
@@ -32,11 +44,23 @@ jq '
   [
     .values[]
     | select(.comment != null)
-    | select((.comment.state // "OPEN") != "RESOLVED")
+    | select(
+        (
+          if (.comment.state != null) then .comment.state
+          elif ((.comment.threadResolved // false) == true) then "RESOLVED"
+          else "OPEN"
+          end
+        ) != "RESOLVED"
+      )
     | {
         comment_id: .comment.id,
         parent_comment_id: (.comment.parent.id // null),
-        state: (.comment.state // "OPEN"),
+        state: (
+          if (.comment.state != null) then .comment.state
+          elif ((.comment.threadResolved // false) == true) then "RESOLVED"
+          else "OPEN"
+          end
+        ),
         author: (.comment.author.displayName // .comment.author.name // "unknown"),
         severity: (.comment.severity // null),
         path: (.comment.anchor.path // null),

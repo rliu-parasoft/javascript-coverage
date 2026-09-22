@@ -11,6 +11,7 @@
 
 ## Tests
 
+- Before running tests, verify the scope of the changes: run only the affected module's tests for single-module changes, and run the full test suite for changes spanning multiple modules.
 - Separate adjacent unit test cases with one blank line.
 - Use i18n resources for all message expectations; add per-locale route tests only for locale-dependent behavior.
 

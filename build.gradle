@@ -49,6 +49,7 @@ subprojects {
         ext.log4jVersion = '2.25.5'
         ext.mockitoVersion = '5.14.2'
         ext.jsonSchemaValidator = '2.0.4'
+        ext.jacksonBomVersion = '2.22.1'
     }
 
 }

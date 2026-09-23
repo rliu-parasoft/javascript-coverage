@@ -111,6 +111,17 @@
     ]
   },
   {
+    "purl": "pkg:npm/minimatch@10.2.6",
+    "licenses": [
+      {
+        "license": {
+          "id": "BlueOak-1.0.0",
+          "url": "https://blueoakcouncil.org/license/1.0.0"
+        }
+      }
+    ]
+  },
+  {
     "purl": "pkg:npm/minipass@7.1.3",
     "licenses": [
       {

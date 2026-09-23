@@ -56,6 +56,17 @@ configurations {
 }
 
 dependencies {
+    // Two transitive requesters ask for different, older com.fasterxml.jackson.* versions:
+    //   - com.parasoft.xtest.coverage.all requests jackson-core/jackson-databind:2.21.4
+    //   - com.networknt:json-schema-validator requests jackson-databind:2.18.4
+    //     (via its own jackson-dataformat-yaml -> jackson-bom dependency)
+    // Neither requester resolves to a modern, patched Jackson version on its own. Declaring the
+    // jackson-bom platform here pins every com.fasterxml.jackson.* artifact to a single, explicit
+    // version (see ext.jacksonBomVersion in the root build.gradle) so both requests are overridden
+    // consistently, and so the chosen version is an intentional decision rather than whatever
+    // Gradle's implicit "highest version wins" conflict resolution happens to pick.
+    implementation platform("com.fasterxml.jackson:jackson-bom:${jacksonBomVersion}")
+
     implementation "com.parasoft.xtest.common:com.parasoft.xtest.coverage.all:${parasoftXtestCoverageAllVersion}"
     implementation "com.networknt:json-schema-validator:${jsonSchemaValidator}"
     implementation "org.apache.logging.log4j:log4j-core:${log4jVersion}"

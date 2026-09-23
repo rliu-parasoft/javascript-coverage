@@ -7,6 +7,9 @@
  * PUBLISH_TO_REPO: Boolean
  * IS_CHENGDU: Boolean
  * NOTIFY_RECIPIENTS: String
+ *
+ * Jenkins agent prerequisite when IS_CHENGDU is true:
+ * $HOME/.netrc: DTP data collector credentials for dtp.parasoftcn.com
  */
 
 def parseRecipientList(String rawRecipients) {
@@ -121,6 +124,56 @@ pipeline {
                             ./jenkins/scripts/sbom.sh
                             '''.stripIndent()
                     }
+                }
+            }
+        }
+
+        stage('Upload DTrack Report to Chengdu DTP') {
+            when {
+                expression {
+                    return params.IS_CHENGDU
+                }
+            }
+            steps {
+                script {
+                    sh '''\
+                            #!/usr/bin/env bash
+                            set -euo pipefail
+                            set +x
+
+                            command -v curl >/dev/null 2>&1 || { echo "ERROR: curl is required."; exit 1; }
+                            command -v xmlstarlet >/dev/null 2>&1 || { echo "ERROR: xmlstarlet is required."; exit 1; }
+
+                            DTRACK_REPORT_XML_URL="https://distros.parasoftcn.com/javascript-coverage/us-jenkins-job-results/dtrack-to-chengdu-dtp.xml"
+                            DTRACK_REPORT_XML_FILE="build/dtrack-to-dtp/dtrack-to-chengdu-dtp.xml"
+                            DTP_DATA_COLLECTOR_URL="https://dtp.parasoftcn.com:8082/api/v2/dataCollector"
+
+                            get_report_build_id() {
+                                xmlstarlet select --template --value-of "/ResultsSession/@buildId" "$1"
+                            }
+
+                            echo "Downloading dtrack report..."
+                            mkdir -p "$(dirname "${DTRACK_REPORT_XML_FILE}")"
+                            curl --output "${DTRACK_REPORT_XML_FILE}" -fsSL "${DTRACK_REPORT_XML_URL}"
+
+                            echo "Updating buildId..."
+                            ORIGINAL_DTRACK_REPORT_BUILD_ID="$(get_report_build_id "${DTRACK_REPORT_XML_FILE}")"
+                            echo "Original buildId: ${ORIGINAL_DTRACK_REPORT_BUILD_ID}"
+
+                            CURRENT_BUILD_REPORT_BUILD_ID="JavascriptCoverage-$(date +%Y-%m-%d)"
+                            echo "Current buildId: ${CURRENT_BUILD_REPORT_BUILD_ID}"
+                            xmlstarlet edit --inplace --update "/ResultsSession/@buildId" \
+                                --value "${CURRENT_BUILD_REPORT_BUILD_ID}" "${DTRACK_REPORT_XML_FILE}"
+
+                            NEW_DTRACK_REPORT_BUILD_ID="$(get_report_build_id "${DTRACK_REPORT_XML_FILE}")"
+                            echo "New buildId: ${NEW_DTRACK_REPORT_BUILD_ID}"
+
+
+                            echo "Uploading dtrack report to DTP..."
+                            curl -fsSL --netrc --form "file=@${DTRACK_REPORT_XML_FILE}" "${DTP_DATA_COLLECTOR_URL}"
+
+                            echo "Done."
+                            '''.stripIndent()
                 }
             }
         }

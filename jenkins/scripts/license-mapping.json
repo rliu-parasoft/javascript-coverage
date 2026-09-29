@@ -67,6 +67,17 @@
     ]
   },
   {
+    "purl": "pkg:npm/caniuse-lite@1.0.30001812",
+    "licenses": [
+      {
+        "license": {
+          "id" : "CC-BY-4.0",
+          "url" : "https://creativecommons.org/licenses/by/4.0/deed.en"
+        }
+      }
+    ]
+  },
+  {
     "purl": "pkg:npm/glob@13.0.6",
     "licenses": [
       {

@@ -17,7 +17,7 @@ codeReviewPipeline(
         'docs/design/*.md'
     ],
     includeSpecContents: true,
-    model: 'gpt-5.6-terra',
+    model: 'gpt-6.1-sol',
     scmProvider: 'bitbucket',
     bitbucketBaseUrl: 'https://code.parasoftcn.com',
     projectKey: 'JSC',

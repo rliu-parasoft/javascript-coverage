@@ -1,6 +1,9 @@
-const generatedPath = 'C:\\project\\dist\\bundle.js';
-const firstSourcePath = 'C:\\project\\src\\first.ts';
-const secondSourcePath = 'C:\\project\\src\\second.ts';
+import { join } from 'node:path';
+
+const sourceMapFixtureRoot = join(process.cwd(), 'source-map-fixture');
+const generatedPath = join(sourceMapFixtureRoot, 'dist', 'bundle.js');
+const firstSourcePath = join(sourceMapFixtureRoot, 'src', 'first.ts');
+const secondSourcePath = join(sourceMapFixtureRoot, 'src', 'second.ts');
 
 const firstLocation = {
     start: { line: 1, column: 0 },

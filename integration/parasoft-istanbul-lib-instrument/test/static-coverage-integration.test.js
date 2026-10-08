@@ -11,7 +11,8 @@ const { name: packageName } = require('../package.json');
 const instrumenterPath = path.resolve(__dirname, '../src/index');
 
 describe('static coverage integration', function() {
-    this.timeout(5000);
+    // Each test starts a fresh Node process; cold starts can exceed ten seconds on Windows and Linux CI workers.
+    this.timeout(30000);
 
     const tempDirectories = [];
 
@@ -137,8 +138,6 @@ describe('static coverage integration', function() {
     });
 
     it('captures the environment value when the visitor loads', function() {
-        // This test starts two Node processes and can exceed five seconds on Windows CI.
-        this.timeout(10000);
 
         const disabledDirectory = createTempDirectory();
         instrumentInChild(disabledDirectory, undefined, {

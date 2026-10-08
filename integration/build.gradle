@@ -9,9 +9,14 @@ subprojects {
         }
 
         tasks.matching { task ->
-            task.name in ['test', 'lintReport']
+            task.name.startsWith('npm') || task.name in ['test', 'lintReport']
         }.configureEach {
-            ignoreExitValue.set(true)
+            // Gradle 9 snapshots the task's node_modules output tree. Node's .bin entries can be symlinks or
+            // non-regular files on Windows, which makes state tracking fail even though npm install is valid.
+            doNotTrackState('Node install output is not a regular file tree and is intentionally not tracked by Gradle.')
+            if (name in ['test', 'lintReport']) {
+                ignoreExitValue.set(true)
+            }
         }
     }
 

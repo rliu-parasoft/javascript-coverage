@@ -1010,23 +1010,27 @@ describe('agent preload', () => {
                 join(app.isolatedRoot, 'runtime-data', '__default__', `${session}.json`),
                 'utf8'
             ));
+            const sourceMapFixtureRoot = join(app.isolatedRoot, 'source-map-fixture');
+            const firstSourcePath = join(sourceMapFixtureRoot, 'src', 'first.ts');
+            const secondSourcePath = join(sourceMapFixtureRoot, 'src', 'second.ts');
+            const generatedPath = join(sourceMapFixtureRoot, 'dist', 'bundle.js');
             expect(Object.keys(persisted)).toEqual([
-                'C:\\project\\src\\first.ts',
-                'C:\\project\\src\\second.ts'
+                firstSourcePath,
+                secondSourcePath
             ]);
-            expect(persisted['C:\\project\\src\\first.ts']).toMatchObject({
+            expect(persisted[firstSourcePath]).toMatchObject({
                 s: { '0': 3 },
                 f: { '0': 5 },
                 b: { '0': [7, 0] }
             });
-            expect(persisted['C:\\project\\src\\second.ts']).toMatchObject({
+            expect(persisted[secondSourcePath]).toMatchObject({
                 s: { '0': 4 },
                 f: { '0': 6 },
                 b: { '0': [8, 0] }
             });
-            expect(persisted['C:\\project\\src\\first.ts']).not.toHaveProperty('inputSourceMap');
-            expect(persisted['C:\\project\\src\\second.ts']).not.toHaveProperty('inputSourceMap');
-            expect(persisted).not.toHaveProperty('C:\\project\\dist\\bundle.js');
+            expect(persisted[firstSourcePath]).not.toHaveProperty('inputSourceMap');
+            expect(persisted[secondSourcePath]).not.toHaveProperty('inputSourceMap');
+            expect(persisted).not.toHaveProperty(generatedPath);
         } finally {
             await terminate(app.child, output.closed);
             removeIsolatedApp(app.isolatedRoot);

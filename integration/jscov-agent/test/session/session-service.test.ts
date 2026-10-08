@@ -106,8 +106,9 @@ vi.mock('../../src/coverage/runtime-coverage.js', async (importOriginal) => {
 
 const fixedDate = () => new Date(2026, 7, 7, 16, 3);
 const coverageGlobal = globalThis as typeof globalThis & { __coverage__?: Record<string, unknown> };
-const generatedSourceMapPath = 'C:\\project\\dist\\bundle.js';
-const originalSourceMapPath = 'C:\\project\\src\\app.ts';
+const sourceMapFixtureRoot = join(tmpdir(), 'jscov-agent-session-source-map-fixture');
+const generatedSourceMapPath = join(sourceMapFixtureRoot, 'dist', 'bundle.js');
+const originalSourceMapPath = join(sourceMapFixtureRoot, 'src', 'app.ts');
 
 function mappedCoverage(inputSourceMap: object): Record<string, unknown> {
     const location = {

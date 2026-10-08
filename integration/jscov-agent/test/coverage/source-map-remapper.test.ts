@@ -13,9 +13,10 @@ type SourceMap = {
     mappings: string;
 };
 
-const generatedPath = 'C:\\project\\dist\\bundle.js';
-const firstSourcePath = 'C:\\project\\src\\first.ts';
-const secondSourcePath = 'C:\\project\\src\\second.ts';
+const sourceMapFixtureRoot = join(tmpdir(), 'jscov-agent-source-map-fixture');
+const generatedPath = join(sourceMapFixtureRoot, 'dist', 'bundle.js');
+const firstSourcePath = join(sourceMapFixtureRoot, 'src', 'first.ts');
+const secondSourcePath = join(sourceMapFixtureRoot, 'src', 'second.ts');
 
 function sourceMap(sources: string[], mappings: string): SourceMap {
     return {
@@ -213,8 +214,8 @@ describe('remapRuntimeCoverage', () => {
     });
 
     it('processes mapped, unmapped, and invalid files independently', () => {
-        const unmappedPath = 'C:\\project\\src\\plain.ts';
-        const invalidGeneratedPath = 'C:\\project\\dist\\invalid.js';
+        const unmappedPath = join(sourceMapFixtureRoot, 'src', 'plain.ts');
+        const invalidGeneratedPath = join(sourceMapFixtureRoot, 'dist', 'invalid.js');
         const coverage: RuntimeCoverage = {
             [generatedPath]: fileCoverage(generatedPath, sourceMap([firstSourcePath], 'AAAA'), 1, 2),
             [unmappedPath]: fileCoverage(unmappedPath, undefined, 2, 3),
@@ -272,7 +273,7 @@ describe('remapRuntimeCoverage', () => {
     });
 
     it('merges counters and location maps when mapped inputs target one source path', () => {
-        const otherGeneratedPath = 'C:\\project\\dist\\other.js';
+        const otherGeneratedPath = join(sourceMapFixtureRoot, 'dist', 'other.js');
         const coverage: RuntimeCoverage = {
             [generatedPath]: fileCoverage(
                 generatedPath,
@@ -355,16 +356,26 @@ describe('remapRuntimeCoverage', () => {
     });
 
     it('remaps with multiple sources', () => {
-        const inputKeys = Object.keys(createRealMultiSourceCoverageData);
-        const remapped = remapRuntimeCoverage(createRealMultiSourceCoverageData);
+        const multiSourceFixtureRoot = join(tmpdir(), 'jscov-agent-multi-source-fixture');
+        const generatedMultiSourcePath = join(multiSourceFixtureRoot, 'dist', 'assets', 'index-UrVP7Pu3.js');
+        const windowsGeneratedPath = 'E:\\ts-vite-npm-esm\\dist\\assets\\index-UrVP7Pu3.js';
+        const coverage = structuredClone(createRealMultiSourceCoverageData);
+        const generatedCoverage = coverage[windowsGeneratedPath] as Record<string, unknown>;
+        delete coverage[windowsGeneratedPath];
+        coverage[generatedMultiSourcePath] = {
+            ...generatedCoverage,
+            path: generatedMultiSourcePath
+        };
+        const inputKeys = Object.keys(coverage);
+        const remapped = remapRuntimeCoverage(coverage);
         const expectedOutputPaths = [
-            'E:\\ts-vite-npm-esm\\src\\message.ts',
-            'E:\\ts-vite-npm-esm\\src\\math.ts',
-            'E:\\ts-vite-npm-esm\\src\\utils\\math.ts',
-            'E:\\ts-vite-npm-esm\\src\\main.ts'
+            join(multiSourceFixtureRoot, 'src', 'message.ts'),
+            join(multiSourceFixtureRoot, 'src', 'math.ts'),
+            join(multiSourceFixtureRoot, 'src', 'utils', 'math.ts'),
+            join(multiSourceFixtureRoot, 'src', 'main.ts')
         ];
 
-        expect(inputKeys).toEqual(['E:\\ts-vite-npm-esm\\dist\\assets\\index-UrVP7Pu3.js']);
+        expect(inputKeys).toEqual([generatedMultiSourcePath]);
         expect(Object.keys(remapped)).toEqual(expectedOutputPaths);
         expect(remapped).not.toHaveProperty(inputKeys[0]);
         expect(remapped[expectedOutputPaths[0]]).toMatchObject({

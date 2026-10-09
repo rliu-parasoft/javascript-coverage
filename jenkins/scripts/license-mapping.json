@@ -100,7 +100,7 @@
     ]
   },
   {
-    "purl": "pkg:npm/lru-cache@11.5.2",
+    "purl": "pkg:npm/lru-cache@11.5.3",
     "licenses": [
       {
         "license": {

@@ -171,7 +171,7 @@ function remapFileCoverage(fileCoverage: IstanbulFileCoverage): IstanbulFileCove
 }
 
 function logRemapFailure(path: string | undefined, error: unknown): void {
-    let message = '';
+    let message;
     if (!path) {
         message = i18n.t('coverage_remap_failed_diagnostic', {
             error: errorMessage(error)

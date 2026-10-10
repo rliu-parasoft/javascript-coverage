@@ -14,6 +14,7 @@
 - Before running tests, verify the scope of the changes: run only the affected module's tests for single-module changes, and run the full test suite for changes spanning multiple modules.
 - Separate adjacent unit test cases with one blank line.
 - Use i18n resources for all message expectations; add per-locale route tests only for locale-dependent behavior.
+- When writing unit tests, Construct filesystem paths using the language's path APIs and paths relative to test-controlled temporary directories or test data directories (e.g., Path.resolve / Paths.get in Java and path.join / path.resolve in JavaScript). Do not hard-code OS-specific absolute paths or path separators. Ensure tests are portable across supported operating systems.
 
 ## Localization
 

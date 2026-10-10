@@ -17,6 +17,7 @@
 
 ## Localization
 
+- Apply only to project source code, not repository automation, CI definitions, skills, documentation, or other non-source assets.
 - All messages(CLI output, log messages, exception messages) must be managed through i18n resource files to avoid hardcoded strings.
 - When changing an i18n message, update every supported locale with equivalent meaning and consistent terminology.
 - When generating or editing any i18n message (e.g., `.properties` or `.json` values), phrase it the way a native speaker would; grammatically correct but awkward phrasing is not acceptable. Apply this to English and Chinese, the currently supported languages.

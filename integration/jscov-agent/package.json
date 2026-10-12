@@ -16,7 +16,7 @@
   "dependencies": {
     "@jridgewell/trace-mapping": "^0.3.31",
     "express": "^5.2.1",
-    "i18next": "26.4.2",
+    "i18next": "26.4.3",
     "istanbul-lib-coverage": "^3.2.2",
     "istanbul-lib-source-maps": "~5.0.6",
     "jsonc-parser": "3.3.1",

@@ -24,6 +24,14 @@ class StaticCoverageVersionManifestReaderTest {
     Path tempDir;
 
     @Test
+    void read_rejectsNullDirectoryWithLocalizedMessage() {
+        NullPointerException failure = assertThrows(NullPointerException.class,
+                () -> StaticCoverageVersionManifestReader.read(null));
+
+        assertEquals(NLS.getFormatted(CommonMessages.COVERAGE_DIRECTORY_MUST_NOT_BE_NULL), failure.getMessage());
+    }
+
+    @Test
     void read_rejectsMissingManifest() {
         IOException exception = assertThrows(IOException.class,
                 () -> StaticCoverageVersionManifestReader.read(tempDir));
@@ -86,7 +94,7 @@ class StaticCoverageVersionManifestReaderTest {
     void read_rejectsInvalidRequiredField(String scenario, String fieldName, String manifest) throws IOException {
         writeManifest(manifest);
 
-        assertInvalidManifest(CommonMessages.STATIC_COVERAGE_VERSION_MANIFEST_FIELD_MUST_BE_NON_BLANK_STRING,
+        assertInvalidManifest(CommonMessages.COVERAGE_VERSION_MANIFEST_FIELD_MUST_BE_NON_BLANK_STRING,
                 fieldName);
     }
 
@@ -96,7 +104,7 @@ class StaticCoverageVersionManifestReaderTest {
             [{"schemaVersion": "1.0", "toolVersion": "6.0.3-1"}]
             """);
 
-        assertInvalidManifest(CommonMessages.STATIC_COVERAGE_VERSION_MANIFEST_MUST_CONTAIN_JSON_OBJECT);
+        assertInvalidManifest(CommonMessages.COVERAGE_VERSION_MANIFEST_MUST_CONTAIN_JSON_OBJECT);
     }
 
     private void writeManifest(String content) throws IOException {
